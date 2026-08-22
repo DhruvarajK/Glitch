@@ -327,10 +327,35 @@ class PetController:
     def _on_edge_reached(self) -> None:
         if self.state not in (PetState.WALKING, PetState.RUNNING):
             return
-        # Turn around instead of grinding against the edge.
+        if self._cross_to_adjacent_screen():
+            return
+        # Nowhere to go: turn around instead of grinding against the edge.
         self._walk_target = None
         self.facing *= -1
         self.enter_state(PetState.IDLE)
+
+    def _cross_to_adjacent_screen(self) -> bool:
+        """Step onto the neighbouring monitor when one continues this way."""
+        if not self.config.get("multi_monitor_roaming", True):
+            return False
+        current = self.screens.screen_at(self.x + self.width / 2, self.y + self.height / 2)
+        neighbour = self.screens.adjacent_screen(current, self.facing)
+        if neighbour is None:
+            return False
+
+        if self.facing > 0:
+            x = neighbour.left
+            target = min(neighbour.right - self.width, x + self.width * 2)
+        else:
+            x = neighbour.right - self.width
+            target = max(neighbour.left, x - self.width * 2)
+
+        y = neighbour.bottom - self.height
+        self.physics.body.set_position(x, y)
+        self.physics.body.on_ground = True
+        self._walk_target = target
+        log.debug("Crossed onto the adjacent screen at x=%d", x)
+        return True
 
     def _sync_size(self) -> None:
         width, height = self.animation.current_size()

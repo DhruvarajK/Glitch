@@ -92,6 +92,28 @@ class ScreenManager(QObject):
         cy = clamp(y, rect.top, max(rect.top, rect.bottom - height))
         return cx, cy
 
+    def adjacent_screen(self, rect: Rect, direction: int) -> Rect | None:
+        """The screen continuing horizontally from `rect`, if there is one.
+
+        Screens count as adjacent when they touch or overlap along the shared
+        edge and their vertical ranges overlap, which covers stacked and
+        offset arrangements as well as a simple side-by-side pair.
+        """
+        candidates = []
+        for other in self._screens:
+            if other == rect:
+                continue
+            if other.bottom <= rect.top or other.top >= rect.bottom:
+                continue  # no vertical overlap; not walkable
+            if direction > 0 and other.left >= rect.right - 1:
+                candidates.append(other)
+            elif direction < 0 and other.right <= rect.left + 1:
+                candidates.append(other)
+        if not candidates:
+            return None
+        # The nearest one wins, so Glitch steps onto the neighbour, not past it.
+        return min(candidates, key=lambda r: abs(r.center_x - rect.center_x))
+
     def random_destination(
         self, x: float, y: float, width: int, chooser: Callable[[int, int], int]
     ) -> float:

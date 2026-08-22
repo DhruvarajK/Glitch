@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication
 
 from core.ai.brain import AIBrain
 from core.ai.conversation import ConversationManager
+from core.ai.memory import MemoryManager
 from core.ai.models import AIResponse
 from core.ai.prompts import OFFLINE_REPLIES, PromptContext
 from core.animation.registry import AnimationRegistry
@@ -21,6 +22,7 @@ from core.pet.state import PetState
 from core.screen.manager import ScreenManager
 from core.utils.constants import APP_NAME, BASE_PET_HEIGHT, DATA_DIR
 from core.utils.logger import get_logger
+from core.utils.sounds import SoundPlayer
 from core.utils.timers import Clock
 from ui.chat_bubble import ChatBubble
 from ui.pet_window import PetWindow
@@ -30,7 +32,9 @@ from ui.widgets.chat_input import ChatInput
 
 log = get_logger("app")
 
-TICK_INTERVAL_MS = 16  # ~60 Hz; animation and movement share one timer
+# ~30 Hz. Animations top out at 16 fps, so a faster tick would only burn
+# wakeups without changing what the user sees.
+TICK_INTERVAL_MS = 33
 PERSIST_INTERVAL_MS = 60_000
 
 
@@ -52,6 +56,8 @@ class GlitchApplication:
 
         self.pet = PetController(self.config, self.registry, self.screens, self.bus)
 
+        self.memory = MemoryManager(self.database)
+        self.sounds = SoundPlayer(self.config)
         self.conversation = ConversationManager(self.config, self.database)
         self.brain = AIBrain(self.config, self.conversation, self.database)
         self._active_request: str | None = None
@@ -73,11 +79,16 @@ class GlitchApplication:
         self.tray.on_settings = self.open_settings
 
         self.bus.subscribe(
-            EventType.PET_WENT_TO_SLEEP, lambda e: self.tray.set_pet_asleep(True)
+            EventType.PET_WENT_TO_SLEEP,
+            lambda e: (self.tray.set_pet_asleep(True), self.sounds.play("sleep")),
         )
         self.bus.subscribe(
-            EventType.PET_WOKE_UP, lambda e: self.tray.set_pet_asleep(False)
+            EventType.PET_WOKE_UP,
+            lambda e: (self.tray.set_pet_asleep(False), self.sounds.play("wake")),
         )
+        self.bus.subscribe(EventType.USER_CLICKED, lambda e: self.sounds.play("click"))
+        self.bus.subscribe(EventType.USER_DRAG_STARTED, lambda e: self.sounds.play("drag"))
+        self.bus.subscribe(EventType.USER_DRAG_ENDED, lambda e: self.sounds.play("drop"))
         self.config.on_change(self._on_config_changed)
 
         self._clock = Clock()
@@ -99,7 +110,22 @@ class GlitchApplication:
         self._clock.reset()
         self._timer.start(TICK_INTERVAL_MS)
         self._persist_timer.start(PERSIST_INTERVAL_MS)
+        QTimer.singleShot(1500, self._first_launch)
         log.info("%s started", APP_NAME)
+
+    def _first_launch(self) -> None:
+        """Introduce Glitch once, then never again."""
+        if self.config.get("onboarded"):
+            return
+        self.config.set("onboarded", True)
+        self.pet.react("happy")
+        self.bubble.show_text(
+            "Hi, I'm Glitch. Double-click me to talk. "
+            "Add an API key in Settings if you want me to answer."
+        )
+        self.tray.notify(
+            APP_NAME, "Glitch is running. Right-click the tray icon for settings."
+        )
 
     def shutdown(self) -> None:
         log.info("Shutting down")
@@ -187,6 +213,15 @@ class GlitchApplication:
         self.bus.emit(EventType.USER_MESSAGE, message=text)
         self.pet.emotion.apply("talked_to")
 
+        # "Remember that ..." is handled locally: explicit, instant, no API call.
+        acknowledgement = self.memory.capture(text)
+        if acknowledgement is not None:
+            self.conversation.add_user_message(text)
+            self.conversation.add_assistant_message(acknowledgement)
+            self.bubble.show_text(acknowledgement)
+            self.pet.react("happy")
+            return
+
         if not self.brain.available:
             self.bubble.show_text(random.choice(OFFLINE_REPLIES))
             self.pet.react("confused")
@@ -197,6 +232,7 @@ class GlitchApplication:
             emotion=self.pet.emotion.state,
             mood=self.pet.emotion.mood(),
             last_interaction="sent you a message",
+            memories=self.memory.recall(),
         )
         self._active_request = self.brain.ask(text, context)
 
@@ -254,11 +290,17 @@ class GlitchApplication:
     def open_settings(self) -> None:
         if self.settings_window is None:
             self.settings_window = SettingsWindow(
-                self.config, self.database, on_clear_memory=self.conversation.clear
+                self.config,
+                self.database,
+                on_clear_memory=self._clear_memory,
             )
         self.settings_window.show()
         self.settings_window.raise_()
         self.settings_window.activateWindow()
+
+    def _clear_memory(self) -> None:
+        self.conversation.clear()
+        self.memory.clear()
 
     # ----------------------------------------------------------- connections
     def _connect_window(self) -> None:
@@ -285,4 +327,8 @@ class GlitchApplication:
             self.window.set_click_through(bool(value))
         elif key == "ai_enabled" and not value:
             self.brain.cancel()
+        elif key == "sounds_enabled":
+            self.sounds.set_enabled(bool(value))
+        elif key == "sound_volume":
+            self.sounds.set_volume(float(value))
         self.bus.emit(EventType.CONFIG_CHANGED, key=key, value=value)

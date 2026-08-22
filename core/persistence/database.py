@@ -105,7 +105,7 @@ class Database:
                 self._connection.commit()
             self.available = True
             log.info("Database ready at %s", self.path)
-        except sqlite3.Error as exc:
+        except (sqlite3.Error, OSError) as exc:
             log.error("Database unavailable (%s); running without history", exc)
             self._connection = None
             self.available = False

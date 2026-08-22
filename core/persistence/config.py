@@ -25,9 +25,12 @@ DEFAULTS: dict[str, Any] = {
     # Movement
     "movement_speed": 80.0,
     "autonomous_movement": True,
+    "multi_monitor_roaming": True,
     # Behaviour tuning
     "reaction_frequency": 1.0,
     "sleep_enabled": True,
+    "sounds_enabled": False,
+    "sound_volume": 0.4,
     "idle_seconds_before_sleep": 300.0,
     # AI
     "ai_enabled": True,
@@ -38,6 +41,7 @@ DEFAULTS: dict[str, Any] = {
     # Advanced
     "debug": False,
     "logging_level": "INFO",
+    "onboarded": False,
     # Last known position, restored on launch.
     "last_position": None,
 }
@@ -52,8 +56,11 @@ _VALIDATORS: dict[str, Callable[[Any], Any]] = {
     "start_with_windows": bool,
     "movement_speed": lambda v: min(max(float(v), 10.0), 400.0),
     "autonomous_movement": bool,
+    "multi_monitor_roaming": bool,
     "reaction_frequency": lambda v: min(max(float(v), 0.0), 3.0),
     "sleep_enabled": bool,
+    "sounds_enabled": bool,
+    "sound_volume": lambda v: min(max(float(v), 0.0), 1.0),
     "idle_seconds_before_sleep": lambda v: min(max(float(v), 10.0), 7200.0),
     "ai_enabled": bool,
     "ai_model": str,
@@ -61,6 +68,7 @@ _VALIDATORS: dict[str, Callable[[Any], Any]] = {
     "conversation_memory": lambda v: min(max(int(v), 2), 100),
     "personality": str,
     "debug": bool,
+    "onboarded": bool,
     "logging_level": lambda v: str(v).upper(),
 }
 

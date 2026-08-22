@@ -202,6 +202,20 @@ class SettingsWindow(QDialog):
             lambda v: self.config.set("idle_seconds_before_sleep", float(v))
         )
         form.addRow("Idle before sleep", sleep_after)
+
+        roaming = QCheckBox()
+        roaming.setChecked(bool(self.config.get("multi_monitor_roaming", True)))
+        roaming.toggled.connect(lambda v: self.config.set("multi_monitor_roaming", v))
+        form.addRow("Roam across monitors", roaming)
+
+        sounds = QCheckBox()
+        sounds.setChecked(bool(self.config.get("sounds_enabled", False)))
+        sounds.toggled.connect(lambda v: self.config.set("sounds_enabled", v))
+        form.addRow("Sound effects", sounds)
+
+        volume = _slider(0, 100, int(float(self.config.get("sound_volume", 0.4)) * 100))
+        volume.valueChanged.connect(lambda v: self.config.set("sound_volume", v / 100.0))
+        form.addRow("Sound volume", volume)
         return page
 
     def _appearance_tab(self) -> QWidget:
@@ -246,6 +260,11 @@ class SettingsWindow(QDialog):
         clear = QPushButton("Clear conversations and memory")
         clear.clicked.connect(self._clear_memory)
         layout.addWidget(clear)
+
+        if self.db is not None and self.db.available:
+            stored = QLabel(f"{len(self.db.memories(limit=1000))} remembered fact(s)")
+            stored.setStyleSheet("color: #888;")
+            layout.addWidget(stored)
 
         layout.addStretch(1)
         return page

@@ -1,6 +1,7 @@
 """Application-wide constants and filesystem locations."""
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from platformdirs import user_data_dir, user_log_dir
@@ -9,8 +10,19 @@ APP_NAME = "Glitch"
 APP_ORG = "GlitchPet"
 APP_VERSION = "0.1.0"
 
-# Directory the source tree lives in (assets ship alongside the code).
-ROOT_DIR = Path(__file__).resolve().parents[2]
+def _root_dir() -> Path:
+    """Where the bundled assets live.
+
+    In a PyInstaller build the data files are unpacked next to the bootloader
+    rather than beside this module, so the frozen case is resolved separately.
+    """
+    bundle = getattr(sys, "_MEIPASS", None)
+    if bundle is not None:
+        return Path(bundle)
+    return Path(__file__).resolve().parents[2]
+
+
+ROOT_DIR = _root_dir()
 ASSETS_DIR = ROOT_DIR / "assets"
 ANIMATIONS_DIR = ASSETS_DIR / "animations"
 ICONS_DIR = ASSETS_DIR / "icons"
