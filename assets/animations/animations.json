@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "fallback": "idle",
+  "animations": {
+    "idle":        { "clip": "idle",        "fps": 12, "loop": true,  "priority": 10 },
+    "neutral":     { "clip": "idle",        "fps": 12, "loop": true,  "priority": 10 },
+    "walk":        { "clip": "run",         "fps": 9,  "loop": true,  "priority": 20 },
+    "run":         { "clip": "run",         "fps": 16, "loop": true,  "priority": 25 },
+    "sit":         { "clip": "deadpan",     "fps": 6,  "loop": true,  "priority": 15 },
+    "look":        { "clip": "suspicious",  "fps": 10, "loop": false, "priority": 30, "interruptible": false },
+    "stretch":     { "clip": "begging",     "fps": 9,  "loop": false, "priority": 30, "interruptible": false },
+    "yawn":        { "clip": "annoyed",     "fps": 7,  "loop": false, "priority": 30, "interruptible": false },
+
+    "think":       { "clip": "thinking",    "fps": 12, "loop": true,  "priority": 80 },
+    "talk":        { "clip": "deadpan",     "fps": 14, "loop": true,  "priority": 60 },
+
+    "sleep":       { "clip": "sleep",       "fps": 5,  "loop": true,  "priority": 50 },
+    "sleepy":      { "clip": "sleep",       "fps": 5,  "loop": true,  "priority": 50 },
+    "wake":        { "clip": "amazed",      "fps": 12, "loop": false, "priority": 70, "interruptible": false, "next": "stretch" },
+
+    "drag":        { "clip": "scared",      "fps": 12, "loop": true,  "priority": 100, "interruptible": false },
+    "drop":        { "clip": "fall-down",   "fps": 12, "loop": false, "priority": 90,  "interruptible": false },
+
+    "happy":       { "clip": "laughing",    "fps": 12, "loop": false, "priority": 70, "interruptible": false },
+    "amused":      { "clip": "laughing",    "fps": 12, "loop": false, "priority": 70, "interruptible": false },
+    "laughing":    { "clip": "laughing",    "fps": 12, "loop": false, "priority": 70, "interruptible": false },
+    "sad":         { "clip": "crying",      "fps": 10, "loop": false, "priority": 70, "interruptible": false },
+    "crying":      { "clip": "crying",      "fps": 10, "loop": false, "priority": 70, "interruptible": false },
+    "angry":       { "clip": "angry",       "fps": 12, "loop": false, "priority": 70, "interruptible": false },
+    "annoyed":     { "clip": "annoyed",     "fps": 11, "loop": false, "priority": 70, "interruptible": false },
+    "confused":    { "clip": "dizzy",       "fps": 12, "loop": false, "priority": 70, "interruptible": false },
+    "dizzy":       { "clip": "dizzy",       "fps": 12, "loop": false, "priority": 70, "interruptible": false },
+    "surprised":   { "clip": "amazed",      "fps": 12, "loop": false, "priority": 70, "interruptible": false },
+    "amazed":      { "clip": "amazed",      "fps": 12, "loop": false, "priority": 70, "interruptible": false },
+    "excited":     { "clip": "dance",       "fps": 14, "loop": false, "priority": 70, "interruptible": false },
+    "dance":       { "clip": "dance",       "fps": 14, "loop": true,  "priority": 65 },
+    "curious":     { "clip": "suspicious",  "fps": 10, "loop": false, "priority": 70, "interruptible": false },
+    "suspicious":  { "clip": "suspicious",  "fps": 10, "loop": false, "priority": 70, "interruptible": false },
+    "love":        { "clip": "love",        "fps": 12, "loop": false, "priority": 70, "interruptible": false },
+    "smug":        { "clip": "smug",        "fps": 10, "loop": false, "priority": 70, "interruptible": false },
+    "mischievous": { "clip": "mischievous", "fps": 12, "loop": false, "priority": 70, "interruptible": false },
+    "embarrassed": { "clip": "embarrassed", "fps": 11, "loop": false, "priority": 70, "interruptible": false },
+    "mindblown":   { "clip": "mindblown",   "fps": 13, "loop": false, "priority": 70, "interruptible": false },
+    "scared":      { "clip": "scared",      "fps": 13, "loop": false, "priority": 70, "interruptible": false },
+    "freezing":    { "clip": "freezing",    "fps": 10, "loop": false, "priority": 70, "interruptible": false },
+    "hiding":      { "clip": "hiding",      "fps": 11, "loop": false, "priority": 70, "interruptible": false },
+    "begging":     { "clip": "begging",     "fps": 11, "loop": false, "priority": 70, "interruptible": false },
+    "deadpan":     { "clip": "deadpan",     "fps": 9,  "loop": false, "priority": 70, "interruptible": false },
+    "fall-down":   { "clip": "fall-down",   "fps": 12, "loop": false, "priority": 90, "interruptible": false }
+  },
+  "mirrored_clips": ["run"]
+}

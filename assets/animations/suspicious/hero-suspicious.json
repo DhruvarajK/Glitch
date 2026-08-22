@@ -1,0 +1,155 @@
+{
+  "frames": [
+    {
+      "filename": "hero-suspicious 0",
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 2048,
+        "h": 2048
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 2048,
+        "h": 2048
+      },
+      "sourceSize": {
+        "w": 2048,
+        "h": 2048
+      },
+      "duration": 83
+    },
+    {
+      "filename": "hero-suspicious 1",
+      "frame": {
+        "x": 2048,
+        "y": 0,
+        "w": 2048,
+        "h": 2048
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 2048,
+        "h": 2048
+      },
+      "sourceSize": {
+        "w": 2048,
+        "h": 2048
+      },
+      "duration": 83
+    },
+    {
+      "filename": "hero-suspicious 2",
+      "frame": {
+        "x": 4096,
+        "y": 0,
+        "w": 2048,
+        "h": 2048
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 2048,
+        "h": 2048
+      },
+      "sourceSize": {
+        "w": 2048,
+        "h": 2048
+      },
+      "duration": 83
+    },
+    {
+      "filename": "hero-suspicious 3",
+      "frame": {
+        "x": 6144,
+        "y": 0,
+        "w": 2048,
+        "h": 2048
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 2048,
+        "h": 2048
+      },
+      "sourceSize": {
+        "w": 2048,
+        "h": 2048
+      },
+      "duration": 83
+    },
+    {
+      "filename": "hero-suspicious 4",
+      "frame": {
+        "x": 8192,
+        "y": 0,
+        "w": 2048,
+        "h": 2048
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 2048,
+        "h": 2048
+      },
+      "sourceSize": {
+        "w": 2048,
+        "h": 2048
+      },
+      "duration": 83
+    },
+    {
+      "filename": "hero-suspicious 5",
+      "frame": {
+        "x": 10240,
+        "y": 0,
+        "w": 2048,
+        "h": 2048
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 2048,
+        "h": 2048
+      },
+      "sourceSize": {
+        "w": 2048,
+        "h": 2048
+      },
+      "duration": 83
+    }
+  ],
+  "meta": {
+    "app": "https://tsubu.art",
+    "version": "1.0",
+    "image": "hero-suspicious.png",
+    "format": "RGBA8888",
+    "size": {
+      "w": 12288,
+      "h": 2048
+    },
+    "scale": "8",
+    "frameTags": [
+      {
+        "name": "hero-suspicious",
+        "from": 0,
+        "to": 5,
+        "direction": "forward"
+      }
+    ]
+  }
+}
