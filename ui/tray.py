@@ -22,6 +22,8 @@ class TrayController:
 
     def __init__(self, config: ConfigManager) -> None:
         self.config = config
+        self.on_chat: Callable[[], None] | None = None
+        self.on_settings: Callable[[], None] | None = None
         self.on_toggle_visibility: Callable[[bool], None] | None = None
         self.on_pause_movement: Callable[[bool], None] | None = None
         self.on_wake: Callable[[], None] | None = None
@@ -42,6 +44,10 @@ class TrayController:
         header = self.menu.addAction(APP_NAME)
         header.setEnabled(False)
         self.menu.addSeparator()
+
+        action_chat = QAction("Chat", self.menu)
+        action_chat.triggered.connect(lambda: self.on_chat and self.on_chat())
+        self.menu.addAction(action_chat)
 
         self.action_pause = QAction("Pause Movement", self.menu, checkable=True)
         self.action_pause.toggled.connect(
@@ -78,6 +84,12 @@ class TrayController:
 
         self.menu.addSeparator()
 
+        action_settings = QAction("Settings...", self.menu)
+        action_settings.triggered.connect(lambda: self.on_settings and self.on_settings())
+        self.menu.addAction(action_settings)
+
+        self.menu.addSeparator()
+
         action_exit = QAction("Exit", self.menu)
         action_exit.triggered.connect(lambda: self.on_exit and self.on_exit())
         self.menu.addAction(action_exit)
@@ -108,5 +120,7 @@ class TrayController:
             self.on_toggle_visibility(self.action_show.text().startswith("Show"))
 
     def _on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
-        if reason == QSystemTrayIcon.Trigger and self.on_toggle_visibility:
+        if reason == QSystemTrayIcon.DoubleClick and self.on_chat:
+            self.on_chat()
+        elif reason == QSystemTrayIcon.Trigger and self.on_toggle_visibility:
             self.on_toggle_visibility(True)
