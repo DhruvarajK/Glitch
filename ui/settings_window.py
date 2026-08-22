@@ -67,6 +67,7 @@ class SettingsWindow(QDialog):
         tabs.addTab(self._general_tab(), "General")
         tabs.addTab(self._ai_tab(), "AI")
         tabs.addTab(self._behaviour_tab(), "Behaviour")
+        tabs.addTab(self._awareness_tab(), "Awareness")
         tabs.addTab(self._appearance_tab(), "Appearance")
         tabs.addTab(self._advanced_tab(), "Advanced")
 
@@ -218,6 +219,56 @@ class SettingsWindow(QDialog):
         form.addRow("Sound volume", volume)
         return page
 
+    def _awareness_tab(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        form = QFormLayout()
+
+        enabled = QCheckBox()
+        enabled.setChecked(bool(self.config.get("awareness_enabled", True)))
+        enabled.toggled.connect(lambda v: self.config.set("awareness_enabled", v))
+        form.addRow("Notice what I'm doing", enabled)
+
+        ai_replies = QCheckBox()
+        ai_replies.setChecked(bool(self.config.get("awareness_ai_replies", False)))
+        ai_replies.toggled.connect(lambda v: self.config.set("awareness_ai_replies", v))
+        form.addRow("Write these lines with AI", ai_replies)
+
+        cooldown = QSpinBox()
+        cooldown.setRange(60, 21600)
+        cooldown.setSingleStep(60)
+        cooldown.setSuffix(" s")
+        cooldown.setValue(int(float(self.config.get("proactive_cooldown_seconds", 600))))
+        cooldown.valueChanged.connect(
+            lambda v: self.config.set("proactive_cooldown_seconds", float(v))
+        )
+        form.addRow("Quiet time between remarks", cooldown)
+
+        daily = QSpinBox()
+        daily.setRange(0, 100)
+        daily.setSuffix(" per day")
+        daily.setValue(int(self.config.get("proactive_daily_limit", 6)))
+        daily.valueChanged.connect(lambda v: self.config.set("proactive_daily_limit", v))
+        form.addRow("Most remarks a day", daily)
+
+        titles = QCheckBox()
+        titles.setChecked(bool(self.config.get("awareness_read_window_titles", False)))
+        titles.toggled.connect(self._set_read_titles)
+        form.addRow("Read window titles", titles)
+        layout.addLayout(form)
+
+        note = QLabel(
+            "Glitch only ever looks at which apps are running and which one is "
+            "in front, plus how long you have been away. Window titles are off "
+            "by default and are never sent anywhere. Setting the daily limit to "
+            "0 keeps Glitch silent while still letting it react with a face."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color: #888;")
+        layout.addWidget(note)
+        layout.addStretch(1)
+        return page
+
     def _appearance_tab(self) -> QWidget:
         page = QWidget()
         form = QFormLayout(page)
@@ -279,6 +330,21 @@ class SettingsWindow(QDialog):
                 QMessageBox.warning(
                     self, APP_NAME, "Could not update the Windows startup entry."
                 )
+
+    def _set_read_titles(self, enabled: bool) -> None:
+        if enabled:
+            confirm = QMessageBox.question(
+                self,
+                APP_NAME,
+                "Let Glitch read the title of the window you are using?\n\n"
+                "Titles often contain file names, document names and page "
+                "titles. They stay on this machine unless AI replies are also "
+                "on, in which case they may be sent to the model.",
+            )
+            if confirm != QMessageBox.Yes:
+                self.config.set("awareness_read_window_titles", False)
+                return
+        self.config.set("awareness_read_window_titles", enabled)
 
     def _set_debug(self, enabled: bool) -> None:
         self.config.set("debug", enabled)

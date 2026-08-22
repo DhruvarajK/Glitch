@@ -92,6 +92,12 @@ animation conveys that.
 """
 
 
+# Added when Glitch speaks first, having noticed something on the machine.
+UNPROMPTED_CONTRACT = """Nobody asked you anything. You noticed this and decided to speak first: {situation}.
+
+Say one short, natural line about it, the way a pet on the desk would pipe up. Do not greet the user as if the conversation is starting over, do not ask what they are working on, and do not claim to see their screen, their files or anything you were not just told."""
+
+
 @dataclass
 class PromptContext:
     """Everything the prompt builder is allowed to know about the runtime."""
@@ -101,6 +107,7 @@ class PromptContext:
     mood: str = "content"
     last_interaction: str | None = None
     memories: list[str] = field(default_factory=list)
+    situation: str | None = None
 
 
 def _time_of_day(now: datetime | None = None) -> str:
@@ -135,6 +142,8 @@ def build_system_prompt(personality_key: str, context: PromptContext) -> str:
         f"It is {_time_of_day()} for the user.",
     ]
 
+    if context.situation:
+        layers.append(UNPROMPTED_CONTRACT.format(situation=context.situation))
     if context.last_interaction:
         layers.append(f"The user most recently: {context.last_interaction}.")
     if context.memories:

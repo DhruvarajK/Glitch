@@ -13,6 +13,8 @@ from core.ai.memory import MemoryManager
 from core.ai.models import AIResponse
 from core.ai.prompts import OFFLINE_REPLIES, PromptContext
 from core.animation.registry import AnimationRegistry
+from core.awareness.monitor import EnvironmentMonitor
+from core.awareness.triggers import Reaction
 from core.events.bus import EventBus
 from core.events.events import EventType
 from core.persistence.config import ConfigManager
@@ -36,6 +38,10 @@ log = get_logger("app")
 # wakeups without changing what the user sees.
 TICK_INTERVAL_MS = 33
 PERSIST_INTERVAL_MS = 60_000
+
+# Stands in for the user's turn when Glitch speaks first. The prompt layer
+# carries the real situation; this only keeps the transcript readable.
+UNPROMPTED_MESSAGE = "(you spoke first, unprompted)"
 
 
 class GlitchApplication:
@@ -69,6 +75,13 @@ class GlitchApplication:
         self.chat_input = ChatInput(self.send_message)
         self.settings_window: SettingsWindow | None = None
         self._connect_window()
+
+        self.awareness = EnvironmentMonitor(
+            self.config,
+            self.bus,
+            on_reaction=self.perform_reaction,
+            suppressed=self._awareness_suppressed,
+        )
 
         self.tray = TrayController(self.config)
         self.tray.on_exit = self.shutdown
@@ -110,6 +123,7 @@ class GlitchApplication:
         self._clock.reset()
         self._timer.start(TICK_INTERVAL_MS)
         self._persist_timer.start(PERSIST_INTERVAL_MS)
+        self.awareness.start()
         QTimer.singleShot(1500, self._first_launch)
         log.info("%s started", APP_NAME)
 
@@ -132,6 +146,7 @@ class GlitchApplication:
         self._timer.stop()
         self._persist_timer.stop()
         self.bus.emit(EventType.APP_SHUTDOWN)
+        self.awareness.stop()
         self.brain.shutdown()
         self._persist_state()
         self.pet.remember_position()
@@ -285,6 +300,59 @@ class GlitchApplication:
         self.bubble.show_text(message)
         self.pet.react("confused")
         self.bus.emit(EventType.AI_REQUEST_FAILED, id=request_id, kind=kind)
+
+    # ------------------------------------------------------------- awareness
+    def _awareness_suppressed(self) -> bool:
+        """True when an unprompted reaction would be unwelcome right now."""
+        return (
+            not self.window.isVisible()
+            or self.pet.state is PetState.SLEEPING
+            or self.pet.dragging
+            or self.bubble.isVisible()          # still saying something else
+            or self.chat_input.isVisible()      # the user is mid-sentence
+            or self._active_request is not None
+            or self.brain.busy
+        )
+
+    def perform_reaction(self, reaction: Reaction) -> None:
+        """Act on something Glitch noticed, without the user asking."""
+        if reaction.emotion:
+            self.pet.emotion.adjust(reaction.emotion)
+
+        if reaction.situation and self.brain.available:
+            self._ask_unprompted(reaction)
+            return
+
+        if reaction.animation:
+            self.pet.react(reaction.animation)
+        if reaction.line:
+            self.bubble.show_text(reaction.line)
+            self.bus.emit(
+                EventType.PET_SPOKE_UNPROMPTED,
+                trigger=reaction.trigger,
+                source="local",
+            )
+
+    def _ask_unprompted(self, reaction: Reaction) -> None:
+        """Let the brain write the line. The situation carries no window title."""
+        context = PromptContext(
+            state=self.pet.state.value,
+            emotion=self.pet.emotion.state,
+            mood=self.pet.emotion.mood(),
+            memories=self.memory.recall(),
+            situation=reaction.situation,
+        )
+        request_id = self.brain.ask(UNPROMPTED_MESSAGE, context)
+        if request_id is None:
+            # The brain declined, so fall back to whatever was local.
+            if reaction.animation:
+                self.pet.react(reaction.animation)
+            if reaction.line:
+                self.bubble.show_text(reaction.line)
+            return
+        self.bus.emit(
+            EventType.PET_SPOKE_UNPROMPTED, trigger=reaction.trigger, source="ai"
+        )
 
     # -------------------------------------------------------------- settings
     def open_settings(self) -> None:

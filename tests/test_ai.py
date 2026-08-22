@@ -124,3 +124,52 @@ def test_system_prompt_includes_memories():
 
 def test_unknown_personality_falls_back_to_default():
     assert "Glitch" in build_system_prompt("does-not-exist", PromptContext())
+
+
+def test_every_offered_emotion_and_action_maps_to_a_real_clip():
+    """The model can only pick what the sprite sheets can actually show."""
+    import json
+
+    from core.ai.models import (
+        ACTION_ANIMATION,
+        ACTIONS,
+        EMOTION_ANIMATION,
+        EMOTION_EFFECTS,
+        EMOTIONS,
+        RESPONSE_JSON_SCHEMA,
+    )
+    from core.utils.constants import ANIMATION_MANIFEST
+
+    clips = set(json.loads(ANIMATION_MANIFEST.read_text(encoding="utf-8"))["animations"])
+    for emotion in EMOTIONS:
+        assert emotion in EMOTION_ANIMATION, emotion
+        assert emotion in EMOTION_EFFECTS, emotion
+        assert EMOTION_ANIMATION[emotion] in clips, emotion
+    for action in ACTIONS:
+        assert action in ACTION_ANIMATION, action
+        assert ACTION_ANIMATION[action] in clips, action
+
+    # The schema handed to the model must offer exactly the same choices.
+    properties = RESPONSE_JSON_SCHEMA["schema"]["properties"]
+    assert properties["emotion"]["enum"] == list(EMOTIONS)
+    assert properties["action"]["enum"] == list(ACTIONS)
+
+
+def test_the_widened_emotions_are_accepted():
+    for emotion, clip in (
+        ("smug", "smug"),
+        ("affectionate", "love"),
+        ("mischievous", "mischievous"),
+        ("amazed", "mindblown"),
+        ("upset", "crying"),
+    ):
+        response = AIResponse(message="hi", emotion=emotion, action="talk")
+        assert response.animation() == clip
+
+
+def test_unprompted_situation_reaches_the_prompt():
+    prompt = build_system_prompt(
+        "default", PromptContext(situation="the user just opened a code editor")
+    )
+    assert "spoke first" in prompt.lower() or "Nobody asked" in prompt
+    assert "just opened a code editor" in prompt

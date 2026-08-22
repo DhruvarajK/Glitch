@@ -46,12 +46,44 @@ Add an OpenAI API key in **Settings → AI**. It is stored in the Windows
 Credential Manager, never in the config file, database or logs.
 
 Replies stream into the speech bubble as they arrive, and the model also picks
-an emotion and an action, which drive the animation Glitch plays afterwards.
+an emotion (19 of them) and an action (9), which drive the animation Glitch
+plays afterwards.
 If a request fails — no key, no network, a timeout, a rate limit — Glitch says
 so and carries on; nothing blocks the GUI.
 
 Memory is explicit. Say *"remember that I prefer dark themes"* and the fact is
 stored and included in later conversations; *"forget everything"* clears it.
+
+### Noticing things on its own
+
+Glitch watches the machine around it and occasionally speaks first. It notices
+apps starting, which kind of app is in front, long unbroken stretches of work,
+you leaving and coming back, a nearly empty battery, and the small hours of the
+morning.
+
+Most reactions are local: a canned line and a matching clip, free and instant,
+working with no API key. Turn on **Settings → Awareness → Write these lines
+with AI** and the *situation* — never a window title — is handed to the model,
+which writes the line instead.
+
+Being unprompted is rationed, because a pet that talks whenever it can is
+unbearable by lunchtime:
+
+- a quiet period between remarks (10 minutes by default)
+- a per-trigger cooldown, so the same observation cannot repeat
+- a daily ceiling (6 by default); set it to 0 to keep Glitch silent while it
+  still reacts with a face
+- silence entirely while it is asleep or hidden, while you are typing to it,
+  while it is already talking, and behind any fullscreen window
+- no remarks at all when a call, a game or a video player is in front
+
+**What it looks at:** the names of running processes, which one has focus, how
+long since your last keypress, and the battery. Window titles are read only if
+you turn them on, and that toggle asks first. Nothing is sent anywhere unless
+you enable AI replies, and then only the category — "the user just opened a
+code editor" — never the app name or the title.
+
+Turn the whole thing off with **Settings → Awareness → Notice what I'm doing**.
 
 ## Layout
 
@@ -61,6 +93,7 @@ core/application.py     wires subsystems together, owns the runtime tick
 core/pet/               state machine, physics, behaviour, interaction
 core/animation/         manifest registry, sprite decoding, frame playback
 core/ai/                brain, conversation, memory, emotion, prompts
+core/awareness/         sensors, app categories, triggers and rationing
 core/events/            internal publish/subscribe bus
 core/screen/            virtual desktop geometry, multi-monitor support
 core/persistence/       config, SQLite storage, credential storage
@@ -98,8 +131,9 @@ python -m pytest
 ```
 
 The suite covers the state machine, physics, configuration, animation
-playback, screen geometry, behaviour weighting, emotion, memory, the database
-and the full AI streaming path against a fake client. It runs offscreen and
+playback, screen geometry, behaviour weighting, emotion, memory, the database,
+awareness detection and rationing, and the full AI streaming path against a
+fake client. It runs offscreen and
 needs no display.
 
 ## Building an executable

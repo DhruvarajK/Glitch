@@ -34,6 +34,16 @@ class EventType(str, Enum):
     ANIMATION_STARTED = "animation.started"
     ANIMATION_FINISHED = "animation.finished"
 
+    # Awareness (what Glitch notices about the machine around it)
+    ENV_APP_LAUNCHED = "env.app_launched"
+    ENV_APP_FOCUSED = "env.app_focused"
+    ENV_FOCUS_SESSION = "env.focus_session"
+    ENV_USER_IDLE = "env.user_idle"
+    ENV_USER_RETURNED = "env.user_returned"
+    ENV_LATE_NIGHT = "env.late_night"
+    ENV_BATTERY_LOW = "env.battery_low"
+    PET_SPOKE_UNPROMPTED = "pet.spoke_unprompted"
+
     # Environment / app
     SCREEN_CONFIGURATION_CHANGED = "screen.configuration_changed"
     CONFIG_CHANGED = "app.config_changed"
