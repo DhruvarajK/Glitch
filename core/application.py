@@ -8,6 +8,7 @@ from core.animation.registry import AnimationRegistry
 from core.events.bus import EventBus
 from core.events.events import EventType
 from core.pet.controller import PetController
+from core.pet.state import PetState
 from core.persistence.config import ConfigManager
 from core.screen.manager import ScreenManager
 from core.utils.constants import APP_NAME, BASE_PET_HEIGHT, DATA_DIR
@@ -45,7 +46,15 @@ class GlitchApplication:
         self.tray = TrayController(self.config)
         self.tray.on_exit = self.shutdown
         self.tray.on_toggle_visibility = self.set_pet_visible
+        self.tray.on_pause_movement = self.pet.pause_movement
+        self.tray.on_wake = self.pet.wake
 
+        self.bus.subscribe(
+            EventType.PET_WENT_TO_SLEEP, lambda e: self.tray.set_pet_asleep(True)
+        )
+        self.bus.subscribe(
+            EventType.PET_WOKE_UP, lambda e: self.tray.set_pet_asleep(False)
+        )
         self.config.on_change(self._on_config_changed)
 
         self._clock = Clock()
@@ -55,7 +64,7 @@ class GlitchApplication:
 
     # ------------------------------------------------------------ lifecycle
     def start(self) -> None:
-        self.pet.play("wake", force=True)
+        self.pet.enter_state(PetState.WAKING, force=True)
         self.window.render_frame(
             self.pet.animation.current_pixmap(), self.pet.x, self.pet.y
         )
@@ -105,10 +114,10 @@ class GlitchApplication:
         self.window.on_context_menu = lambda pos: self.tray.menu.popup(pos)
 
     def _on_release(self, pos) -> None:
-        was_dragged = self.pet.end_drag()
-        if not was_dragged:
+        # A press that never moved is a click; the interaction layer decides
+        # how Glitch feels about it.
+        if not self.pet.end_drag():
             self.bus.emit(EventType.USER_CLICKED)
-            self.pet.react()
 
     def _on_config_changed(self, key: str, value: object) -> None:
         if key == "always_on_top":

@@ -23,6 +23,8 @@ class TrayController:
     def __init__(self, config: ConfigManager) -> None:
         self.config = config
         self.on_toggle_visibility: Callable[[bool], None] | None = None
+        self.on_pause_movement: Callable[[bool], None] | None = None
+        self.on_wake: Callable[[], None] | None = None
         self.on_exit: Callable[[], None] | None = None
 
         icon_path = ICONS_DIR / "glitch.png"
@@ -39,6 +41,19 @@ class TrayController:
     def _build_menu(self) -> None:
         header = self.menu.addAction(APP_NAME)
         header.setEnabled(False)
+        self.menu.addSeparator()
+
+        self.action_pause = QAction("Pause Movement", self.menu, checkable=True)
+        self.action_pause.toggled.connect(
+            lambda checked: self.on_pause_movement and self.on_pause_movement(checked)
+        )
+        self.menu.addAction(self.action_pause)
+
+        self.action_wake = QAction("Wake Up", self.menu)
+        self.action_wake.triggered.connect(lambda: self.on_wake and self.on_wake())
+        self.action_wake.setEnabled(False)
+        self.menu.addAction(self.action_wake)
+
         self.menu.addSeparator()
 
         self.action_show = QAction("Hide Glitch", self.menu)
@@ -80,6 +95,10 @@ class TrayController:
     def notify(self, title: str, message: str) -> None:
         if self.tray.isVisible():
             self.tray.showMessage(title, message, self.tray.icon(), 4000)
+
+    def set_pet_asleep(self, asleep: bool) -> None:
+        self.action_wake.setEnabled(asleep)
+        self.tray.setToolTip(f"{APP_NAME} - asleep" if asleep else APP_NAME)
 
     def set_pet_visible(self, visible: bool) -> None:
         self.action_show.setText("Hide Glitch" if visible else "Show Glitch")
