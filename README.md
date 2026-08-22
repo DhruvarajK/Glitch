@@ -54,6 +54,50 @@ so and carries on; nothing blocks the GUI.
 Memory is explicit. Say *"remember that I prefer dark themes"* and the fact is
 stored and included in later conversations; *"forget everything"* clears it.
 
+### Telling Glitch to do things
+
+Glitch does more than talk. These are recognised and carried out **locally,
+with no API request at all** - they work with no key and no network:
+
+| Say | It does |
+| --- | --- |
+| "remind me in 20 minutes to stretch" | Schedules it; survives a restart |
+| "remind me to rest in half an hour" | Same, in plain English |
+| "open notepad" | Launches an approved app |
+| "what am I doing?" / "how long have I been coding?" | Reports the day from its own records |
+| "shut up for an hour" | Mutes unprompted remarks; chat still works |
+| "you can talk again" | Unmutes |
+| "remember that ..." | Stores a fact |
+
+Anything not recognised is ordinary conversation and goes to the brain as
+before, so a phrasing that misses costs nothing but a normal reply.
+
+Reminders live in the database. One that came due while Glitch was closed is
+delivered on the next launch rather than lost.
+
+**Opening apps is whitelisted.** Notepad, calculator and paint work out of the
+box; anything else has to be added in **Settings -> Actions**. A name from a
+chat message is only ever used as a key into that list, never as a command, and
+the program is started directly rather than through a shell.
+
+### Keeping the cost down
+
+The AI is the only part that costs anything, so most of Glitch avoids it:
+
+- Every instruction above is handled locally - zero tokens.
+- Unprompted remarks use written-in lines by default; AI-written ones are
+  off until you turn them on in **Settings -> Awareness**.
+- Replies are capped at 220 output tokens, which is more than a speech bubble
+  needs, and only the last 12 messages of context are sent.
+- **Daily ceilings** in **Settings -> AI**: 60 requests and 120,000 tokens by
+  default. On reaching either, Glitch says so and stops making requests until
+  tomorrow. Set either to zero for no limit.
+- The AI tab shows what has been spent today and in total.
+
+Time spent per kind of app is tracked locally so "how long have I been coding"
+is answerable without asking a model. Only the category and a running total of
+seconds are stored - never an app name or a window title.
+
 ### Noticing things on its own
 
 Glitch watches the machine around it and occasionally speaks first. It notices
@@ -94,6 +138,7 @@ core/pet/               state machine, physics, behaviour, interaction
 core/animation/         manifest registry, sprite decoding, frame playback
 core/ai/                brain, conversation, memory, emotion, prompts
 core/awareness/         sensors, app categories, triggers and rationing
+core/tools/             local instructions: reminders, launching, activity
 core/events/            internal publish/subscribe bus
 core/screen/            virtual desktop geometry, multi-monitor support
 core/persistence/       config, SQLite storage, credential storage
@@ -132,8 +177,9 @@ python -m pytest
 
 The suite covers the state machine, physics, configuration, animation
 playback, screen geometry, behaviour weighting, emotion, memory, the database,
-awareness detection and rationing, and the full AI streaming path against a
-fake client. It runs offscreen and
+awareness detection and rationing, local instruction parsing, reminders, the
+whitelisted launcher, the cost ceilings, and the full AI streaming path against
+a fake client. It runs offscreen and
 needs no display.
 
 ## Building an executable

@@ -36,8 +36,14 @@ DEFAULTS: dict[str, Any] = {
     "ai_enabled": True,
     "ai_model": "gpt-4o-mini",
     "ai_temperature": 0.8,
-    "conversation_memory": 20,
+    "conversation_memory": 12,
     "personality": "default",
+    # Cost ceilings. Both are per day and count every request Glitch makes,
+    # unprompted ones included. Zero means no limit.
+    "daily_request_limit": 60,
+    "daily_token_limit": 120_000,
+    # Actions
+    "app_whitelist": {},
     # Awareness. Glitch watches process names only unless titles are opted in.
     "awareness_enabled": True,
     "awareness_ai_replies": False,
@@ -73,6 +79,13 @@ _VALIDATORS: dict[str, Callable[[Any], Any]] = {
     "ai_temperature": lambda v: min(max(float(v), 0.0), 2.0),
     "conversation_memory": lambda v: min(max(int(v), 2), 100),
     "personality": str,
+    "daily_request_limit": lambda v: max(int(v), 0),
+    "daily_token_limit": lambda v: max(int(v), 0),
+    "app_whitelist": lambda v: {
+        str(name).strip().lower(): str(command).strip()
+        for name, command in dict(v).items()
+        if str(name).strip() and str(command).strip()
+    },
     "awareness_enabled": bool,
     "awareness_ai_replies": bool,
     "awareness_read_window_titles": bool,

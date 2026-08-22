@@ -26,7 +26,9 @@ from core.utils.logger import get_logger
 log = get_logger("brain")
 
 REQUEST_TIMEOUT = 45.0
-MAX_OUTPUT_TOKENS = 400
+# A speech bubble holds a line or two. Capping output low is the single
+# biggest lever on cost, since output tokens are the expensive half.
+MAX_OUTPUT_TOKENS = 220
 
 
 def extract_partial_message(raw: str) -> str:
@@ -160,6 +162,30 @@ class AIBrain(QObject):
     def busy(self) -> bool:
         return self._current is not None and not self._current.done()
 
+    def budget_state(self) -> dict[str, int]:
+        """Today's spend against the configured ceilings. Zero means no limit."""
+        spent = (
+            self.db.usage_today()
+            if self.db is not None and self.db.available
+            else {"requests": 0, "input_tokens": 0, "output_tokens": 0}
+        )
+        tokens = spent["input_tokens"] + spent["output_tokens"]
+        return {
+            "requests": spent["requests"],
+            "tokens": tokens,
+            "request_limit": int(self.config.get("daily_request_limit", 0) or 0),
+            "token_limit": int(self.config.get("daily_token_limit", 0) or 0),
+        }
+
+    def over_budget(self) -> bool:
+        """True once today's spend has reached either ceiling."""
+        state = self.budget_state()
+        if state["request_limit"] and state["requests"] >= state["request_limit"]:
+            return True
+        if state["token_limit"] and state["tokens"] >= state["token_limit"]:
+            return True
+        return False
+
     def _get_client(self):
         key = get_api_key()
         if not key:
@@ -192,6 +218,11 @@ class AIBrain(QObject):
 
         if not get_api_key():
             self.request_failed.emit(request_id, "auth", FAILURE_REPLIES["auth"])
+            return request_id
+
+        if self.over_budget():
+            log.info("Daily budget reached; refusing request %s", request_id)
+            self.request_failed.emit(request_id, "budget", FAILURE_REPLIES["budget"])
             return request_id
 
         self.conversation.add_user_message(message)

@@ -9,6 +9,7 @@ from typing import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -17,10 +18,13 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
     QMessageBox,
     QPushButton,
     QSlider,
     QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -53,11 +57,13 @@ class SettingsWindow(QDialog):
         config: ConfigManager,
         database: Database | None = None,
         on_clear_memory: Callable[[], None] | None = None,
+        reminders=None,
     ) -> None:
         super().__init__(None)
         self.config = config
         self.db = database
         self.on_clear_memory = on_clear_memory
+        self.reminders = reminders
 
         self.setWindowTitle(f"{APP_NAME} Settings")
         self.setMinimumWidth(420)
@@ -68,6 +74,7 @@ class SettingsWindow(QDialog):
         tabs.addTab(self._ai_tab(), "AI")
         tabs.addTab(self._behaviour_tab(), "Behaviour")
         tabs.addTab(self._awareness_tab(), "Awareness")
+        tabs.addTab(self._actions_tab(), "Actions")
         tabs.addTab(self._appearance_tab(), "Appearance")
         tabs.addTab(self._advanced_tab(), "Advanced")
 
@@ -164,6 +171,32 @@ class SettingsWindow(QDialog):
             lambda i: self.config.set("personality", personality.itemData(i))
         )
         form.addRow("Personality", personality)
+
+        requests = QSpinBox()
+        requests.setRange(0, 10_000)
+        requests.setSpecialValueText("no limit")
+        requests.setSuffix(" per day")
+        requests.setValue(int(self.config.get("daily_request_limit", 60)))
+        requests.valueChanged.connect(lambda v: self.config.set("daily_request_limit", v))
+        form.addRow("Request limit", requests)
+
+        tokens = QSpinBox()
+        tokens.setRange(0, 10_000_000)
+        tokens.setSingleStep(10_000)
+        tokens.setSpecialValueText("no limit")
+        tokens.setSuffix(" tokens per day")
+        tokens.setValue(int(self.config.get("daily_token_limit", 120_000)))
+        tokens.valueChanged.connect(lambda v: self.config.set("daily_token_limit", v))
+        form.addRow("Token limit", tokens)
+
+        if self.db is not None and self.db.available:
+            today = self.db.usage_today()
+            spent = QLabel(
+                f"{today['requests']} requests, "
+                f"{today['input_tokens'] + today['output_tokens']} tokens"
+            )
+            spent.setStyleSheet("color: #888;")
+            form.addRow("Spent today", spent)
 
         if self.db is not None and self.db.available:
             totals = self.db.usage_totals()
@@ -268,6 +301,91 @@ class SettingsWindow(QDialog):
         layout.addWidget(note)
         layout.addStretch(1)
         return page
+
+    def _actions_tab(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+
+        layout.addWidget(QLabel("Apps Glitch may open when asked"))
+        self.whitelist_table = QTableWidget(0, 2)
+        self.whitelist_table.setHorizontalHeaderLabels(["Say this", "Runs this"])
+        self.whitelist_table.setEditTriggers(QAbstractItemView.AllEditTriggers)
+        self.whitelist_table.horizontalHeader().setStretchLastSection(True)
+        self._load_whitelist()
+        layout.addWidget(self.whitelist_table)
+
+        add = QPushButton("Add")
+        add.clicked.connect(lambda: self.whitelist_table.insertRow(
+            self.whitelist_table.rowCount()
+        ))
+        remove = QPushButton("Remove")
+        remove.clicked.connect(self._remove_whitelist_row)
+        save = QPushButton("Save apps")
+        save.clicked.connect(self._save_whitelist)
+        row = QHBoxLayout()
+        row.addWidget(add)
+        row.addWidget(remove)
+        row.addStretch(1)
+        row.addWidget(save)
+        layout.addLayout(row)
+
+        note = QLabel(
+            "Glitch will only start something listed here, and runs it directly "
+            "rather than through a command line. Notepad, calculator and paint "
+            "work without being listed."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("color: #888;")
+        layout.addWidget(note)
+
+        layout.addWidget(QLabel("Pending reminders"))
+        self.reminder_list = QListWidget()
+        self._load_reminders()
+        layout.addWidget(self.reminder_list)
+
+        clear_reminders = QPushButton("Cancel all reminders")
+        clear_reminders.clicked.connect(self._clear_reminders)
+        layout.addWidget(clear_reminders)
+        return page
+
+    def _load_whitelist(self) -> None:
+        entries = dict(self.config.get("app_whitelist", {}) or {})
+        self.whitelist_table.setRowCount(len(entries))
+        for row, (name, command) in enumerate(sorted(entries.items())):
+            self.whitelist_table.setItem(row, 0, QTableWidgetItem(str(name)))
+            self.whitelist_table.setItem(row, 1, QTableWidgetItem(str(command)))
+
+    def _remove_whitelist_row(self) -> None:
+        row = self.whitelist_table.currentRow()
+        if row >= 0:
+            self.whitelist_table.removeRow(row)
+
+    def _save_whitelist(self) -> None:
+        entries: dict[str, str] = {}
+        for row in range(self.whitelist_table.rowCount()):
+            name = self.whitelist_table.item(row, 0)
+            command = self.whitelist_table.item(row, 1)
+            if name and command and name.text().strip() and command.text().strip():
+                entries[name.text().strip().lower()] = command.text().strip()
+        self.config.set("app_whitelist", entries)
+        self._load_whitelist()
+        QMessageBox.information(self, APP_NAME, f"{len(entries)} app(s) saved.")
+
+    def _load_reminders(self) -> None:
+        self.reminder_list.clear()
+        pending = self.reminders.pending() if self.reminders is not None else []
+        for reminder in pending:
+            due = reminder.due_at.strftime("%H:%M")
+            self.reminder_list.addItem(f"{due} - {reminder.text}")
+        if not pending:
+            self.reminder_list.addItem("Nothing pending.")
+
+    def _clear_reminders(self) -> None:
+        if self.reminders is None:
+            return
+        cancelled = self.reminders.cancel_all()
+        self._load_reminders()
+        QMessageBox.information(self, APP_NAME, f"{cancelled} reminder(s) cancelled.")
 
     def _appearance_tab(self) -> QWidget:
         page = QWidget()

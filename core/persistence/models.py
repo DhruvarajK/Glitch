@@ -37,3 +37,17 @@ class UsageRecord:
     success: bool
     error: str | None
     created_at: datetime
+
+
+@dataclass
+class Reminder:
+    """Something the user asked to be told later."""
+
+    id: int | None
+    text: str
+    due_at: datetime
+    created_at: datetime
+    fired: bool = False
+
+    def is_due(self, now: datetime | None = None) -> bool:
+        return not self.fired and self.due_at <= (now or datetime.now())

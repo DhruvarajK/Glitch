@@ -108,6 +108,7 @@ class PromptContext:
     last_interaction: str | None = None
     memories: list[str] = field(default_factory=list)
     situation: str | None = None
+    activity: str | None = None
 
 
 def _time_of_day(now: datetime | None = None) -> str:
@@ -142,6 +143,10 @@ def build_system_prompt(personality_key: str, context: PromptContext) -> str:
         f"It is {_time_of_day()} for the user.",
     ]
 
+    if context.activity:
+        # One short line, so the model can answer "what am I doing" without a
+        # second request, and colour its replies with what is going on.
+        layers.append(f"What the user has been doing: {context.activity}")
     if context.situation:
         layers.append(UNPROMPTED_CONTRACT.format(situation=context.situation))
     if context.last_interaction:
@@ -172,4 +177,5 @@ FAILURE_REPLIES = {
     "network": "I can't reach my brain right now.",
     "invalid": "I thought something, but it came out garbled.",
     "unknown": "Something went wrong in my head. Try again?",
+    "budget": "I've used up today's thinking budget. I'm still here, just cheaper.",
 }

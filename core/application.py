@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import random
+import time
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication
@@ -22,6 +23,11 @@ from core.persistence.database import Database
 from core.pet.controller import PetController
 from core.pet.state import PetState
 from core.screen.manager import ScreenManager
+from core.tools import intents
+from core.tools.activity import ActivityTracker
+from core.tools.launcher import AppLauncher
+from core.tools.reminders import ReminderService
+from core.tools.runner import ToolResult, ToolRunner
 from core.utils.constants import APP_NAME, BASE_PET_HEIGHT, DATA_DIR
 from core.utils.logger import get_logger
 from core.utils.sounds import SoundPlayer
@@ -69,6 +75,16 @@ class GlitchApplication:
         self._active_request: str | None = None
         self._connect_brain()
 
+        self.activity = ActivityTracker(self.database)
+        self.reminders = ReminderService(self.database, on_due=self._on_reminder_due)
+        self.tools = ToolRunner(
+            self.reminders,
+            AppLauncher(self.config),
+            self.activity,
+            on_quiet=self.set_quiet_for,
+        )
+        self._quiet_until = 0.0
+
         self.window = PetWindow(always_on_top=bool(self.config.get("always_on_top")))
         self.window.set_click_through(bool(self.config.get("click_through")))
         self.bubble = ChatBubble()
@@ -100,6 +116,7 @@ class GlitchApplication:
             EventType.PET_WOKE_UP,
             lambda e: (self.tray.set_pet_asleep(False), self.sounds.play("wake")),
         )
+        self.bus.subscribe(EventType.ENV_APP_FOCUSED, self._on_app_focused)
         self.bus.subscribe(EventType.USER_CLICKED, lambda e: self.sounds.play("click"))
         self.bus.subscribe(EventType.USER_DRAG_STARTED, lambda e: self.sounds.play("drag"))
         self.bus.subscribe(EventType.USER_DRAG_ENDED, lambda e: self.sounds.play("drop"))
@@ -125,6 +142,9 @@ class GlitchApplication:
         self._timer.start(TICK_INTERVAL_MS)
         self._persist_timer.start(PERSIST_INTERVAL_MS)
         self.awareness.start()
+        self.reminders.start()
+        # Anything that came due while Glitch was closed is delivered now.
+        QTimer.singleShot(3000, self.reminders.check)
         QTimer.singleShot(1500, self._first_launch)
         log.info("%s started", APP_NAME)
 
@@ -148,6 +168,8 @@ class GlitchApplication:
         self._persist_timer.stop()
         self.bus.emit(EventType.APP_SHUTDOWN)
         self.awareness.stop()
+        self.reminders.stop()
+        self.activity.flush()
         self.brain.shutdown()
         self._persist_state()
         self.pet.remember_position()
@@ -197,6 +219,7 @@ class GlitchApplication:
 
     # ----------------------------------------------------------- persistence
     def _persist_state(self) -> None:
+        self.activity.flush()
         if self.database.available:
             self.database.save_emotion(json.dumps(self.pet.emotion.state.as_dict()))
 
@@ -232,11 +255,22 @@ class GlitchApplication:
         # "Remember that ..." is handled locally: explicit, instant, no API call.
         acknowledgement = self.memory.capture(text)
         if acknowledgement is not None:
-            self.conversation.add_user_message(text)
-            self.conversation.add_assistant_message(acknowledgement)
-            self.bubble.show_text(acknowledgement)
-            self.pet.react("happy")
+            self._say_locally(text, acknowledgement, "happy")
             return
+
+        # So is every instruction: reminders, opening an approved app, quiet
+        # mode and the day's activity all resolve without a request.
+        call = intents.parse(text)
+        if call is not None:
+            result = self.tools.run(call)
+            if result is not None:
+                if result.emotion:
+                    self.pet.emotion.adjust(result.emotion)
+                self._say_locally(text, result.message, result.animation)
+                self.bus.emit(
+                    EventType.TOOL_PERFORMED, tool=call.name, message=result.message
+                )
+                return
 
         if not self.brain.available:
             self.bubble.show_text(random.choice(OFFLINE_REPLIES))
@@ -249,8 +283,41 @@ class GlitchApplication:
             mood=self.pet.emotion.mood(),
             last_interaction="sent you a message",
             memories=self.memory.recall(),
+            activity=self.activity.summary(),
         )
         self._active_request = self.brain.ask(text, context)
+
+    def _say_locally(self, asked: str, reply: str, animation: str) -> None:
+        """Answer without the brain, keeping the transcript honest about it."""
+        self.conversation.add_user_message(asked)
+        self.conversation.add_assistant_message(reply)
+        self.bubble.show_text(reply)
+        self.pet.react(animation)
+
+    # ----------------------------------------------------------------- tools
+    def _on_reminder_due(self, reminder) -> None:
+        if self.pet.state is PetState.SLEEPING:
+            self.pet.wake()
+        if not self.window.isVisible():
+            # Hidden, so the bubble would go unseen; use the tray instead.
+            self.tray.notify(APP_NAME, reminder.text)
+            return
+        self.bubble.show_text(f"Reminder: {reminder.text}")
+        self.pet.react("amazed")
+        self.sounds.play("react")
+        self.bus.emit(EventType.REMINDER_FIRED, text=reminder.text)
+
+    def set_quiet_for(self, minutes: float) -> None:
+        """Mute unprompted remarks for a while. Chat still works."""
+        self._quiet_until = time.monotonic() + max(0.0, minutes) * 60.0
+        log.info("Quiet for %.0f minutes", minutes)
+
+    @property
+    def quiet(self) -> bool:
+        return time.monotonic() < self._quiet_until
+
+    def _on_app_focused(self, event) -> None:
+        self.activity.observe(event.get("category"), time.monotonic())
 
     def _connect_brain(self) -> None:
         self.brain.request_started.connect(self._on_ai_started)
@@ -306,7 +373,8 @@ class GlitchApplication:
     def _awareness_suppressed(self) -> bool:
         """True when an unprompted reaction would be unwelcome right now."""
         return (
-            not self.window.isVisible()
+            self.quiet
+            or not self.window.isVisible()
             or self.pet.state is PetState.SLEEPING
             or self.pet.dragging
             or self.bubble.isVisible()          # still saying something else
@@ -350,6 +418,7 @@ class GlitchApplication:
             emotion=self.pet.emotion.state,
             mood=self.pet.emotion.mood(),
             memories=self.memory.recall(),
+            activity=self.activity.summary(),
             situation=reaction.situation,
         )
         request_id = self.brain.ask(UNPROMPTED_MESSAGE, context)
@@ -371,6 +440,7 @@ class GlitchApplication:
                 self.config,
                 self.database,
                 on_clear_memory=self._clear_memory,
+                reminders=self.reminders,
             )
         self.settings_window.show()
         self.settings_window.raise_()

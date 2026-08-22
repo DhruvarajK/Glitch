@@ -44,6 +44,10 @@ class EventType(str, Enum):
     ENV_BATTERY_LOW = "env.battery_low"
     PET_SPOKE_UNPROMPTED = "pet.spoke_unprompted"
 
+    # Actions Glitch carried out locally
+    TOOL_PERFORMED = "tool.performed"
+    REMINDER_FIRED = "tool.reminder_fired"
+
     # Environment / app
     SCREEN_CONFIGURATION_CHANGED = "screen.configuration_changed"
     CONFIG_CHANGED = "app.config_changed"

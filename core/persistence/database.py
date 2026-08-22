@@ -11,13 +11,13 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-from core.persistence.models import Memory, Message, UsageRecord
+from core.persistence.models import Memory, Message, Reminder, UsageRecord
 from core.utils.constants import DATABASE_PATH
 from core.utils.logger import get_logger
 
 log = get_logger("database")
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS conversations (
@@ -61,6 +61,23 @@ CREATE TABLE IF NOT EXISTS usage (
     success       INTEGER NOT NULL DEFAULT 1,
     error         TEXT,
     created_at    TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS reminders (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    text        TEXT NOT NULL,
+    due_at      TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    fired       INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(fired, due_at);
+
+-- Seconds spent with each kind of app in front, one row per day per category.
+CREATE TABLE IF NOT EXISTS activity (
+    day       TEXT NOT NULL,
+    category  TEXT NOT NULL,
+    seconds   REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, category)
 );
 """
 
@@ -286,6 +303,71 @@ class Database:
         if not rows:
             return {"requests": 0, "input_tokens": 0, "output_tokens": 0, "successes": 0}
         return {key: int(rows[0][key]) for key in rows[0].keys()}
+
+    def usage_today(self) -> dict[str, int]:
+        """Requests and tokens spent since midnight, for the cost guard."""
+        rows = self._query(
+            "SELECT COUNT(*) AS requests, "
+            "COALESCE(SUM(input_tokens), 0) AS input_tokens, "
+            "COALESCE(SUM(output_tokens), 0) AS output_tokens "
+            "FROM usage WHERE substr(created_at, 1, 10) = ?",
+            (datetime.now().date().isoformat(),),
+        )
+        if not rows:
+            return {"requests": 0, "input_tokens": 0, "output_tokens": 0}
+        return {key: int(rows[0][key]) for key in rows[0].keys()}
+
+    # ------------------------------------------------------------- reminders
+    def add_reminder(self, text: str, due_at: datetime) -> int | None:
+        cursor = self._execute(
+            "INSERT INTO reminders (text, due_at, created_at) VALUES (?, ?, ?)",
+            (text, due_at.isoformat(timespec="seconds"), _now()),
+        )
+        return cursor.lastrowid if cursor else None
+
+    def pending_reminders(self) -> list[Reminder]:
+        rows = self._query(
+            "SELECT * FROM reminders WHERE fired = 0 ORDER BY due_at ASC"
+        )
+        return [
+            Reminder(
+                id=row["id"],
+                text=row["text"],
+                due_at=_parse(row["due_at"]),
+                created_at=_parse(row["created_at"]),
+                fired=bool(row["fired"]),
+            )
+            for row in rows
+        ]
+
+    def mark_reminder_fired(self, reminder_id: int) -> None:
+        self._execute("UPDATE reminders SET fired = 1 WHERE id = ?", (reminder_id,))
+
+    def delete_reminder(self, reminder_id: int) -> None:
+        self._execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
+
+    def clear_reminders(self) -> None:
+        self._execute("DELETE FROM reminders")
+
+    # -------------------------------------------------------------- activity
+    def add_activity(self, day: str, category: str, seconds: float) -> None:
+        """Add time to one category, creating the row on first sight."""
+        self._execute(
+            "INSERT INTO activity (day, category, seconds) VALUES (?, ?, ?) "
+            "ON CONFLICT(day, category) DO UPDATE SET seconds = seconds + ?",
+            (day, category, float(seconds), float(seconds)),
+        )
+
+    def activity_for(self, day: str) -> dict[str, float]:
+        rows = self._query(
+            "SELECT category, seconds FROM activity WHERE day = ? "
+            "ORDER BY seconds DESC",
+            (day,),
+        )
+        return {row["category"]: float(row["seconds"]) for row in rows}
+
+    def clear_activity(self) -> None:
+        self._execute("DELETE FROM activity")
 
     def recent_usage(self, limit: int = 20) -> list[UsageRecord]:
         rows = self._query("SELECT * FROM usage ORDER BY id DESC LIMIT ?", (limit,))
