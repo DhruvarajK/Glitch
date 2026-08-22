@@ -1,207 +1,328 @@
-# Glitch
+<div align="center">
+  <img src="assets/icons/glitch.ico" width="128" height="128" alt="Glitch Desktop Pet Logo" />
+  <h1>Glitch</h1>
+  <p><strong>A modular, production-grade Windows desktop pet featuring autonomous physics, zero-token local intent processing, and decoupled LLM intelligence.</strong></p>
 
-A lightweight Windows desktop pet with an optional AI brain. Glitch lives on
-the desktop, roams around, reacts to you, and — when an OpenAI key is
-configured — talks back through a speech bubble.
+  <p>
+    <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python Version" /></a>
+    <a href="https://doc.qt.io/qtforpython-6/"><img src="https://img.shields.io/badge/GUI-PySide6%20%2F%20Qt%206-41CD52?style=flat-square&logo=qt&logoColor=white" alt="PySide6 / Qt 6" /></a>
+    <a href="https://platform.openai.com/"><img src="https://img.shields.io/badge/LLM-OpenAI%20API-412991?style=flat-square&logo=openai&logoColor=white" alt="OpenAI API" /></a>
+    <a href="https://www.sqlite.org/"><img src="https://img.shields.io/badge/Storage-SQLite%20%26%20Keyring-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="SQLite & Keyring" /></a>
+    <a href="https://docs.pytest.org/"><img src="https://img.shields.io/badge/Tests-Pytest-0A9EDC?style=flat-square&logo=pytest&logoColor=white" alt="Pytest" /></a>
+    <a href="https://pyinstaller.org/"><img src="https://img.shields.io/badge/Packaging-PyInstaller-2C2D72?style=flat-square&logo=python&logoColor=white" alt="PyInstaller" /></a>
+    <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows Platform" />
+  </p>
+</div>
 
-The pet engine never depends on the AI layer. With no network and no API key,
-Glitch still walks, idles, sits, sleeps, reacts and can be dragged around; the
-AI only adds conversation on top.
+---
 
-## Requirements
+## Table of Contents
 
-- Python 3.10+
-- Windows 10/11 (the window handling targets Windows; other platforms are untested)
+- [Overview](#overview)
+- [Architectural Principles](#architectural-principles)
+- [System Architecture](#system-architecture)
+- [Core Subsystems](#core-subsystems)
+  - [Autonomous Pet Engine & Physics](#autonomous-pet-engine--physics)
+  - [Local Intent & Command Engine](#local-intent--command-engine)
+  - [Proactive Context Awareness](#proactive-context-awareness)
+  - [Decoupled LLM Brain & Dialogue Pipeline](#decoupled-llm-brain--dialogue-pipeline)
+- [Interaction Model](#interaction-model)
+- [Offline Commands & Intent Matrix](#offline-commands--intent-matrix)
+- [Security, Privacy & Budget Controls](#security-privacy--budget-controls)
+- [Codebase Layout](#codebase-layout)
+- [Installation & Setup](#installation--setup)
+- [Animation & Asset Pipeline](#animation--asset-pipeline)
+- [Testing & Quality Assurance](#testing--quality-assurance)
+- [Packaging & Distribution](#packaging--distribution)
+- [Data Locations](#data-locations)
+- [Audio Pipeline](#audio-pipeline)
 
-## Setup
+---
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-python main.py
-```
+## Overview
 
-Glitch appears on the primary monitor with a system tray icon.
+Glitch is a lightweight, fully autonomous desktop companion engineered for Windows 10 and 11. It roams the desktop, reacts to user input and active workloads, manages productivity reminders, and provides natural conversational interactions when connected to an LLM provider.
 
-## Using Glitch
+Unlike conventional chatbot wrappers, Glitch is designed from the ground up as a native desktop entity. The simulation engine runs entirely locally and independently of external cloud services: without an internet connection or an API key, Glitch maintains its complete behavior tree, physics simulation, animation system, and local tool execution.
 
-| Action | Result |
-| --- | --- |
-| Left click | A reaction, chosen to match its mood |
-| Click repeatedly | Annoyance, then a less friendly reaction |
-| Drag | Pick Glitch up; it falls and lands when released |
-| Double click | Opens the chat prompt |
-| Right click | The tray menu |
-| Tray icon | Chat, pause movement, wake up, always-on-top, click-through, settings, hide, exit |
+---
 
-Left alone, Glitch makes its own decisions every few seconds — wandering,
-sitting, looking around, playing, yawning — weighted by how energetic, curious,
-annoyed or sleepy it currently is. After long enough without attention it
-falls asleep, and wakes when you click it.
+## Architectural Principles
 
-### Talking to Glitch
+1. **Strict Engine Decoupling**: The core pet simulation (state machine, physics, animation decoding, desktop geometry) never depends on the AI subsystem. Network latency, API downtimes, or missing credentials will never block GUI rendering or physics updates.
+2. **Zero-Token Local Routing**: Common productivity requests (reminders, whitelisted application launching, productivity tracking, fact storage) are parsed and executed entirely offline with zero API calls.
+3. **Zero-Trust Security & Privacy**: Sensitive credentials are stored in Windows Credential Manager rather than plaintext configuration files. Process monitoring records only aggregate duration and broad categories without recording window titles or keystrokes unless explicitly enabled.
+4. **Strict Cost & Frequency Rationing**: Conversational and proactive triggers are governed by configurable cooldowns, quiet periods, and hard daily token/request ceilings.
+5. **High-DPI & Multi-Monitor Native**: Window geometry and coordinate transformations accommodate multi-monitor configurations, virtual desktop bounds, and per-monitor display scaling.
 
-Add an OpenAI API key in **Settings → AI**. It is stored in the Windows
-Credential Manager, never in the config file, database or logs.
+---
 
-Replies stream into the speech bubble as they arrive, and the model also picks
-an emotion (19 of them) and an action (9), which drive the animation Glitch
-plays afterwards.
-If a request fails — no key, no network, a timeout, a rate limit — Glitch says
-so and carries on; nothing blocks the GUI.
-
-Memory is explicit. Say *"remember that I prefer dark themes"* and the fact is
-stored and included in later conversations; *"forget everything"* clears it.
-
-### Telling Glitch to do things
-
-Glitch does more than talk. These are recognised and carried out **locally,
-with no API request at all** - they work with no key and no network:
-
-| Say | It does |
-| --- | --- |
-| "remind me in 20 minutes to stretch" | Schedules it; survives a restart |
-| "remind me to rest in half an hour" | Same, in plain English |
-| "open notepad" | Launches an approved app |
-| "what am I doing?" / "how long have I been coding?" | Reports the day from its own records |
-| "shut up for an hour" | Mutes unprompted remarks; chat still works |
-| "you can talk again" | Unmutes |
-| "remember that ..." | Stores a fact |
-
-Anything not recognised is ordinary conversation and goes to the brain as
-before, so a phrasing that misses costs nothing but a normal reply.
-
-Reminders live in the database. One that came due while Glitch was closed is
-delivered on the next launch rather than lost.
-
-**Opening apps is whitelisted.** Notepad, calculator and paint work out of the
-box; anything else has to be added in **Settings -> Actions**. A name from a
-chat message is only ever used as a key into that list, never as a command, and
-the program is started directly rather than through a shell.
-
-### Keeping the cost down
-
-The AI is the only part that costs anything, so most of Glitch avoids it:
-
-- Every instruction above is handled locally - zero tokens.
-- Unprompted remarks use written-in lines by default; AI-written ones are
-  off until you turn them on in **Settings -> Awareness**.
-- Replies are capped at 220 output tokens, which is more than a speech bubble
-  needs, and only the last 12 messages of context are sent.
-- **Daily ceilings** in **Settings -> AI**: 60 requests and 120,000 tokens by
-  default. On reaching either, Glitch says so and stops making requests until
-  tomorrow. Set either to zero for no limit.
-- The AI tab shows what has been spent today and in total.
-
-Time spent per kind of app is tracked locally so "how long have I been coding"
-is answerable without asking a model. Only the category and a running total of
-seconds are stored - never an app name or a window title.
-
-### Noticing things on its own
-
-Glitch watches the machine around it and occasionally speaks first. It notices
-apps starting, which kind of app is in front, long unbroken stretches of work,
-you leaving and coming back, a nearly empty battery, and the small hours of the
-morning.
-
-Most reactions are local: a canned line and a matching clip, free and instant,
-working with no API key. Turn on **Settings → Awareness → Write these lines
-with AI** and the *situation* — never a window title — is handed to the model,
-which writes the line instead.
-
-Being unprompted is rationed, because a pet that talks whenever it can is
-unbearable by lunchtime:
-
-- a quiet period between remarks (10 minutes by default)
-- a per-trigger cooldown, so the same observation cannot repeat
-- a daily ceiling (6 by default); set it to 0 to keep Glitch silent while it
-  still reacts with a face
-- silence entirely while it is asleep or hidden, while you are typing to it,
-  while it is already talking, and behind any fullscreen window
-- no remarks at all when a call, a game or a video player is in front
-
-**What it looks at:** the names of running processes, which one has focus, how
-long since your last keypress, and the battery. Window titles are read only if
-you turn them on, and that toggle asks first. Nothing is sent anywhere unless
-you enable AI replies, and then only the category — "the user just opened a
-code editor" — never the app name or the title.
-
-Turn the whole thing off with **Settings → Awareness → Notice what I'm doing**.
-
-## Layout
+## System Architecture
 
 ```text
-main.py                 entry point
-core/application.py     wires subsystems together, owns the runtime tick
-core/pet/               state machine, physics, behaviour, interaction
-core/animation/         manifest registry, sprite decoding, frame playback
-core/ai/                brain, conversation, memory, emotion, prompts
-core/awareness/         sensors, app categories, triggers and rationing
-core/tools/             local instructions: reminders, launching, activity
-core/events/            internal publish/subscribe bus
-core/screen/            virtual desktop geometry, multi-monitor support
-core/persistence/       config, SQLite storage, credential storage
-ui/                     pet window, chat bubble, settings, tray, autostart
-assets/animations/      one directory per clip: sheet PNG + Aseprite JSON
-scripts/                asset validation and build tooling
++-----------------------------------------------------------------------+
+|                              Qt GUI Thread                            |
+|  +--------------------+  +--------------------+  +-----------------+  |
+|  |     Pet Window     |  |    Speech Bubble   |  |   Tray & Settings| |
+|  |  (Frameless/Alpha) |  |   (Markdown / UI)  |  |     Management  |  |
+|  +---------+----------+  +---------+----------+  +--------+--------+  |
++------------|-----------------------|----------------------|-----------+
+             |                       |                      |
+             v                       v                      v
++-----------------------------------------------------------------------+
+|                       Application Event Bus (Pub/Sub)                 |
++------+---------------+---------------+----------------+---------------+
+       |               |               |                |
+       v               v               v                v
++--------------+ +--------------+ +--------------+ +--------------------+
+|  Pet Engine  | | Animation    | | Context      | | Local Tool         |
+|  & Physics   | | Decoders     | | Sensors      | | Engine             |
+|  (30 Hz FSM) | | (Aseprite)   | | (psutil/Win) | | (SQLite/Scheduler) |
++--------------+ +--------------+ +--------------+ +--------------------+
+                                                            |
+                                                            | Unhandled
+                                                            v Intents
+                                                   +--------------------+
+                                                   | Async AI Worker    |
+                                                   | (OpenAI / Keyring) |
+                                                   +--------------------+
 ```
 
-Four layers, with one rule holding them apart: **the pet engine must never
-depend on the AI engine to keep working.**
+---
 
-## Animations
+## Core Subsystems
 
-Every animation is declared in `assets/animations/animations.json`, which maps
-a logical name (`idle`, `walk`, `think`, `happy`, …) onto a clip directory plus
-playback metadata: fps, looping, priority, interruptibility and an optional
-follow-on clip. Sprite sheets are Aseprite-style — a single-row PNG strip with
-a sidecar JSON describing each frame.
+### Autonomous Pet Engine & Physics
 
-Nothing in the code refers to an asset path directly. Add a clip directory, add
-a manifest entry, and it is playable. Sheets are decoded straight to display
-size, so the 2048px source frames never sit in memory at full resolution, and
-clips load lazily the first time they are needed.
+- **State Machine**: Driven at a constant 30 Hz tick (`PHYSICS_HZ`). Transitions dynamically between states including `IDLE`, `WALK`, `SIT`, `SLEEP`, `FALL`, `DRAG`, `REACT`, and `THINK`.
+- **Personality & Mood Vector**: Evaluates an internal mood state (energy, curiosity, annoyance, sleepiness) to weight Markovian state decisions every few seconds.
+- **Physics Integration**: Simulates gravity, boundary collisions, drag acceleration, and floor-detection across primary and secondary display geometries.
 
-Validate after any change:
+### Local Intent & Command Engine
 
-```bash
-python scripts/validate_assets.py
+- **Pattern-Matching Dispatcher**: Intercepts chat inputs locally before invoking remote API calls.
+- **Persistent Reminders**: Stored in SQLite (`glitch.db`). Survives process restarts; reminders that mature while Glitch is closed are immediately delivered upon subsequent startup.
+- **Application Launcher**: Whitelist-enforced direct executable dispatching. Prevents arbitrary shell command execution.
+- **Activity Tracker**: Locally tallies time spent across development, communication, gaming, and media categories.
+
+### Proactive Context Awareness
+
+- **Environmental Sensors**: Monitors active process metadata, system idle time via Windows user input hooks, battery states, and temporal thresholds (such as late-night hours).
+- **Proactive Rationing Engine**:
+  - Minimum quiet interval between unprompted remarks (10 minutes default).
+  - Individual trigger cooldowns to eliminate repetitive remarks.
+  - Hard daily limits on proactive observations (6 remarks default).
+  - Absolute suppression during fullscreen applications, video playback, active gaming, or sleep mode.
+
+### Decoupled LLM Brain & Dialogue Pipeline
+
+- **Async Streaming Execution**: Responses stream into the UI character-by-character on background worker threads without dropping frame rates.
+- **Structured Schema Decoding**: The model outputs dynamic emotional states (19 distinct classifications) and physical actions (9 animations) alongside response text, instantly queuing corresponding animations.
+- **Bounded Context Window**: Keeps conversation history within a rolling 12-message window and constrains token output to minimize latency and expenditure.
+- **Explicit Long-Term Memory**: Stores user preferences and persistent facts into SQLite on demand (`remember that...` / `forget everything`).
+
+---
+
+## Interaction Model
+
+| Input Action | Result |
+| :--- | :--- |
+| **Left Click** | Triggers an immediate reactive animation matching the pet's current mood. |
+| **Repeated Left Click** | Increments the internal annoyance vector, prompting frustrated animations and dialogue. |
+| **Left Click + Drag** | Transitions to `DRAG` state; upon release, simulates gravitational acceleration until landing. |
+| **Double Click** | Focuses and opens the conversational chat prompt. |
+| **Right Click** | Context menu access for quick settings and state management. |
+| **System Tray Icon** | Full control center: Chat, Pause Roaming, Wake/Sleep, Always-on-Top toggle, Click-Through mode, Settings, Hide, and Graceful Exit. |
+
+---
+
+## Offline Commands & Intent Matrix
+
+The following commands are parsed locally via regex and rule engines. They incur **zero token cost** and function completely offline:
+
+| Utterance Pattern | Execution Target | System Behavior |
+| :--- | :--- | :--- |
+| `"remind me in 20 minutes to stretch"` | Reminder Scheduler | Schedules a background event; persists across restarts in SQLite. |
+| `"remind me to rest in half an hour"` | Natural Language Parser | Resolves relative natural language time offsets into exact timestamps. |
+| `"open notepad"` | Whitelist Launcher | Validates against approved application registry and starts the process. |
+| `"what am I doing?"` / `"how long have I been coding?"` | Activity Monitor | Summarizes aggregate local time tracked for the given category today. |
+| `"shut up for an hour"` | Rationing Engine | Temporarily mutes proactive remarks while keeping conversational chat active. |
+| `"you can talk again"` | Rationing Engine | Resets proactive silence timer and restores standard observation triggers. |
+| `"remember that I use vim"` | Memory Manager | Writes key fact into SQLite storage for injection into future context windows. |
+| `"forget everything"` | Memory Manager | Clears all persistent user facts from SQLite storage. |
+
+---
+
+## Security, Privacy & Budget Controls
+
+### Credential Isolation
+- API keys are never written to `config.json`, database tables, or application log files.
+- Keys are securely dispatched to and retrieved from the **Windows Credential Manager** via the `keyring` library (`KEYRING_SERVICE = "GlitchDesktopPet"`).
+
+### Whitelisted Execution Architecture
+- The application launcher operates exclusively on an explicit whitelist defined in `Settings -> Actions`.
+- Process execution uses direct system path resolution (`subprocess.Popen`) without invoking shell interpreters (`shell=False`), preventing command injection.
+
+### Privacy-Preserving Telemetry
+- By default, awareness monitoring evaluates only process executables and category classifications (e.g., `code_editor`, `browser`).
+- Window title inspection is disabled by default and requires explicit user consent via Settings.
+
+### Budget & Rate Limits
+- **Daily Request Caps**: Enforces a strict ceiling on total API requests per calendar day (Default: 60).
+- **Daily Token Caps**: Enforces a maximum total token consumption per calendar day (Default: 120,000).
+- **Token Truncation**: Output generations are constrained to 220 completion tokens per prompt.
+
+---
+
+## Codebase Layout
+
+```text
+Glitch/
+├── assets/
+│   ├── animations/          # Sprite sheets (PNG) and Aseprite frame definitions (JSON)
+│   │   └── animations.json  # Central animation manifest and playback registry
+│   ├── icons/               # Application and system tray icons (glitch.ico, glitch.png)
+│   └── sounds/              # Optional WAV sound effects
+├── core/
+│   ├── ai/                  # LLM integration, conversation buffer, prompts, emotion parsing
+│   ├── animation/           # Manifest registry, frame decoders, sprite scaling
+│   ├── awareness/           # Process monitors, system idle hooks, proactive triggers
+│   ├── events/              # Publish/subscribe application event bus
+│   ├── persistence/         # Configuration manager, SQLite schema, credential storage
+│   ├── pet/                 # State machine, physics engine, mood vectors, behavior tree
+│   ├── screen/              # Virtual desktop geometry, multi-monitor boundary calculations
+│   ├── tools/               # Local intent parsers, reminders, application launcher
+│   ├── utils/               # Constants, logging, filesystem path resolution
+│   └── application.py       # Central orchestrator and subsystem lifecycle manager
+├── ui/
+│   ├── widgets/             # Reusable UI controls and styled components
+│   ├── autostart.py         # Windows Startup Registry integration
+│   ├── chat_bubble.py       # Frameless speech bubble with markdown rendering
+│   ├── pet_window.py        # Frameless alpha-channel pet rendering surface
+│   ├── settings_window.py   # Multi-tab configuration and budget interface
+│   ├── theme.py             # Global typography, palettes, and styling tokens
+│   └── tray.py              # System tray integration and context menus
+├── scripts/
+│   ├── build.py             # PyInstaller automated packaging script
+│   └── validate_assets.py   # Asset integrity, frame dimension, and manifest linter
+├── tests/                   # Automated pytest suite covering core subsystems
+├── glitch.spec              # PyInstaller build specification
+├── main.py                  # Application entry point
+├── pytest.ini               # Pytest configuration
+└── requirements.txt         # Production and development dependencies
 ```
 
-## Tests
+---
+
+## Installation & Setup
+
+### Prerequisites
+
+- **Operating System**: Windows 10 or Windows 11 (64-bit)
+- **Python Runtime**: Python 3.10 or higher
+
+### Development Setup
+
+1. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/DhruvarajK/Glitch.git
+   cd Glitch
+   ```
+
+2. **Initialize Virtual Environment**:
+   ```bash
+   python -m venv .venv
+   .venv\Scripts\activate
+   ```
+
+3. **Install Dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Launch Application**:
+   ```bash
+   python main.py
+   ```
+
+5. **Configure Credentials (Optional)**:
+   - Right-click the system tray icon and open **Settings**.
+   - Navigate to the **AI** tab and input your OpenAI API Key.
+   - The key is securely committed to the Windows Credential Manager.
+
+---
+
+## Animation & Asset Pipeline
+
+All pet visuals utilize single-row sprite sheets exported from Aseprite accompanied by frame metadata JSON files.
+
+- **Manifest Declaration**: Registered inside `assets/animations/animations.json`. Each entry defines frame rate, loop policies, interruptibility, playback priorities, and optional chained animations.
+- **Lazy Runtime Loading**: Sprite sheets are decoded on-demand and scaled directly to the target logical resolution (`BASE_PET_HEIGHT = 190`), ensuring minimal resident memory footprint.
+- **Asset Integrity Verification**: Run the asset validation linter before committing new animations:
+  ```bash
+  python scripts/validate_assets.py
+  ```
+
+---
+
+## Testing & Quality Assurance
+
+The test suite runs headlessly without requiring an active graphical display, making it fully compatible with automated CI pipelines.
 
 ```bash
 python -m pytest
 ```
 
-The suite covers the state machine, physics, configuration, animation
-playback, screen geometry, behaviour weighting, emotion, memory, the database,
-awareness detection and rationing, local instruction parsing, reminders, the
-whitelisted launcher, the cost ceilings, and the full AI streaming path against
-a fake client. It runs offscreen and
-needs no display.
+### Test Coverage Breakdown
 
-## Building an executable
+- `test_state_machine.py`: State transition rules, timeout fallbacks, and priority overrides.
+- `test_physics.py`: Gravitational acceleration, delta calculations, and collision boundaries.
+- `test_animation.py`: Manifest parsing, frame sequence math, and sprite cache decoders.
+- `test_behaviour.py`: Mood vector calculus and Markovian transition weighting.
+- `test_brain.py` & `test_ai.py`: Asynchronous streaming, structured output decoding, and mock LLM pipelines.
+- `test_memory.py`: SQLite conversation persistence and memory recall routines.
+- `test_awareness.py`: Process categorizers, sensor filters, and rationing window calculations.
+- `test_tools.py`: Regex pattern matching, NL reminder resolution, and process whitelisting.
+
+---
+
+## Packaging & Distribution
+
+Glitch includes an automated build pipeline utilizing PyInstaller to produce a self-contained executable.
 
 ```bash
 pip install pyinstaller
 python scripts/build.py
 ```
 
-This validates the assets, runs the tests, then produces `dist/Glitch.exe`
-with the animations bundled. User data is never packaged — config, database
-and credentials are created on first launch.
+The build script executes asset verification and the full test suite before invoking `glitch.spec`. The resulting artifact is generated at:
 
-## Data locations
+```text
+dist/Glitch.exe
+```
 
-- Config: `%APPDATA%\GlitchPet\Glitch\config.json`
-- Database: `%APPDATA%\GlitchPet\Glitch\glitch.db`
-- Logs: `%LOCALAPPDATA%\GlitchPet\Glitch\Logs\`
-- API key: Windows Credential Manager
+*Note: User-specific configuration files (`config.json`), local databases (`glitch.db`), and system logs are never bundled into the binary; they are initialized in user-space upon first execution.*
 
-## Sounds
+---
 
-None ship with Glitch. Drop WAV files named `click`, `drag`, `drop`, `sleep`,
-`wake`, `talk` or `react` into `assets/sounds/` and enable sound effects in
-Settings → Behaviour; cues with no file stay silent.
+## Data Locations
+
+Glitch adheres to standard Windows directory layouts:
+
+| Storage Type | Filesystem Path | Description |
+| :--- | :--- | :--- |
+| **Configuration** | `%APPDATA%\GlitchPet\Glitch\config.json` | Application preferences, whitelist registry, awareness flags. |
+| **Database** | `%APPDATA%\GlitchPet\Glitch\glitch.db` | SQLite tables for persistent reminders, memory facts, activity metrics. |
+| **System Logs** | `%LOCALAPPDATA%\GlitchPet\Glitch\Logs\` | Rolling debug and application event logs. |
+| **API Credentials** | Windows Credential Manager | Encrypted storage under target identifier `GlitchDesktopPet`. |
+
+---
+
+## Audio Pipeline
+
+Sound effects in Glitch are fully event-driven and optional. 
+
+To enable audio cues:
+1. Place standard `.wav` audio files into `assets/sounds/` adhering to the naming convention:
+   - `click.wav`, `drag.wav`, `drop.wav`, `sleep.wav`, `wake.wav`, `talk.wav`, `react.wav`
+2. Enable sound playback in **Settings -> Behaviour**. Unassigned sound events fail silently without performance impact.
