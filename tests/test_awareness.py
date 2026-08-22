@@ -12,6 +12,7 @@ import pytest
 from core.awareness.apps import categorise, is_quiet, label_for
 from core.awareness.monitor import (
     BATTERY_THRESHOLD,
+    FOCUS_DWELL_SECONDS,
     FOCUS_SESSION_SECONDS,
     IDLE_THRESHOLD,
     EnvironmentMonitor,
@@ -84,12 +85,38 @@ def test_returning_from_idle_reports_how_long(monitor):
     assert signals[0].data["away_minutes"] == int((IDLE_THRESHOLD + 5) // 60)
 
 
+def test_switching_to_an_app_reacts_once_it_settles(monitor):
+    """The usual "I opened an app" is a focus switch, not a new process."""
+    start = snap(at=0.0, foreground="code.exe")
+    assert monitor.detect(snap(), start) == []  # the switch itself is not enough
+
+    twitchy = snap(at=FOCUS_DWELL_SECONDS - 1, foreground="code.exe")
+    assert monitor.detect(start, twitchy) == []
+
+    settled = snap(at=FOCUS_DWELL_SECONDS + 1, foreground="code.exe")
+    signals = monitor.detect(twitchy, settled)
+    assert [s.key for s in signals] == ["focus:coding"]
+    assert signals[0].subject == "coding"
+    # Only on arrival, not for as long as the app stays in front.
+    assert monitor.detect(settled, snap(at=100.0, foreground="code.exe")) == []
+
+
+def test_alt_tabbing_through_apps_reacts_to_none_of_them(monitor):
+    previous = snap()
+    for at, process in ((1.0, "code.exe"), (3.0, "chrome.exe"), (5.0, "spotify.exe")):
+        current = snap(at=at, foreground=process)
+        assert monitor.detect(previous, current) == []
+        previous = current
+
+
 def test_focus_session_needs_an_unbroken_stretch(monitor):
     start = snap(at=0.0, foreground="code.exe")
     monitor.detect(snap(), start)  # establishes the focus category
+    settled = snap(at=FOCUS_DWELL_SECONDS + 1, foreground="code.exe")
+    monitor.detect(start, settled)  # spends the arrival signal
 
     early = snap(at=FOCUS_SESSION_SECONDS - 60, foreground="code.exe")
-    assert monitor.detect(start, early) == []
+    assert monitor.detect(settled, early) == []
 
     late = snap(at=FOCUS_SESSION_SECONDS + 1, foreground="code.exe")
     signals = monitor.detect(early, late)
@@ -105,7 +132,8 @@ def test_switching_apps_restarts_the_focus_clock(monitor):
         snap(at=0.0, foreground="code.exe"), snap(at=100.0, foreground="chrome.exe")
     )
     long_after = snap(at=FOCUS_SESSION_SECONDS + 50, foreground="chrome.exe")
-    assert monitor.detect(snap(at=100.0, foreground="chrome.exe"), long_after) == []
+    signals = monitor.detect(snap(at=100.0, foreground="chrome.exe"), long_after)
+    assert [s.key for s in signals] == ["focus:browser"]  # arrival, not a session
 
 
 def test_battery_warns_once_on_the_way_down(monitor):
@@ -279,11 +307,39 @@ def test_suppression_still_publishes_but_never_reacts(qt_gui_app, config):
 def test_fullscreen_keeps_glitch_out_of_the_way(qt_gui_app, config):
     sensor = FakeSensor([
         snap(running=set()),
-        snap(at=2.0, running={"spotify.exe"}, fullscreen=True),
+        snap(at=2.0, running={"spotify.exe"}, foreground="game.exe", fullscreen=True),
     ])
     monitor = EnvironmentMonitor(config, EventBus(), sensor=sensor)
     monitor.poll()
     assert monitor.poll() is None
+
+
+def test_the_bare_desktop_does_not_count_as_fullscreen(qt_gui_app, config):
+    """The shell reports as covering the monitor; that must not silence Glitch."""
+    sensor = FakeSensor([
+        snap(running=set()),
+        snap(at=2.0, running={"spotify.exe"}, foreground=None, fullscreen=True),
+    ])
+    monitor = EnvironmentMonitor(config, EventBus(), sensor=sensor)
+    monitor.poll()
+    assert monitor.poll() is not None
+
+
+def test_react_now_ignores_the_cooldowns(qt_gui_app, config):
+    sensor = FakeSensor([snap(foreground="code.exe")] * 4)
+    monitor = EnvironmentMonitor(config, EventBus(), sensor=sensor)
+
+    first = monitor.react_now()
+    assert first is not None and first.trigger == "focus:coding"
+    # A second request works immediately, where a poll would have been refused.
+    assert monitor.react_now() is not None
+
+
+def test_react_now_falls_back_when_nothing_is_recognised(qt_gui_app, config):
+    sensor = FakeSensor([snap(foreground="mystery.exe")] * 2)
+    monitor = EnvironmentMonitor(config, EventBus(), sensor=sensor)
+    reaction = monitor.react_now()
+    assert reaction is not None and reaction.trigger == "user_returned"
 
 
 def test_disabling_awareness_stops_polling_entirely(qt_gui_app, config):

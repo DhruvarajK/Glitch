@@ -27,6 +27,7 @@ class TrayController:
         self.on_toggle_visibility: Callable[[bool], None] | None = None
         self.on_pause_movement: Callable[[bool], None] | None = None
         self.on_wake: Callable[[], None] | None = None
+        self.on_react_now: Callable[[], None] | None = None
         self.on_exit: Callable[[], None] | None = None
 
         icon_path = ICONS_DIR / "glitch.png"
@@ -48,6 +49,12 @@ class TrayController:
         action_chat = QAction("Chat", self.menu)
         action_chat.triggered.connect(lambda: self.on_chat and self.on_chat())
         self.menu.addAction(action_chat)
+
+        action_react = QAction("React to What I'm Doing", self.menu)
+        action_react.triggered.connect(
+            lambda: self.on_react_now and self.on_react_now()
+        )
+        self.menu.addAction(action_react)
 
         self.action_pause = QAction("Pause Movement", self.menu, checkable=True)
         self.action_pause.toggled.connect(

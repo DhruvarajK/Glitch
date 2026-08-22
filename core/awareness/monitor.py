@@ -26,6 +26,9 @@ POLL_INTERVAL_MS = 2000
 
 # Away for this long counts as having left the desk.
 IDLE_THRESHOLD = 300.0
+# How long a window must hold focus before the switch counts. Long enough that
+# alt-tabbing through three apps does not set off three reactions.
+FOCUS_DWELL_SECONDS = 6.0
 # An unbroken stretch on one kind of app worth mentioning.
 FOCUS_SESSION_SECONDS = 2700.0
 # Below this, on battery, is worth a warning.
@@ -77,6 +80,7 @@ class EnvironmentMonitor(QObject):
         self._focus_category: str | None = None
         self._focus_since: float | None = None
         self._focus_announced = False
+        self._switch_announced = False
         self._idle_since: float | None = None
         self._was_idle = False
         self._late_night_day: int | None = None
@@ -140,7 +144,9 @@ class EnvironmentMonitor(QObject):
             return None
         # A fullscreen window means a game, a call or a presentation. Emoting
         # behind it is pointless and interrupting it is rude.
-        if current.fullscreen or is_quiet(categorise(current.foreground)):
+        if (current.foreground and current.fullscreen) or is_quiet(
+            categorise(current.foreground)
+        ):
             return None
 
         for signal in signals:
@@ -157,10 +163,38 @@ class EnvironmentMonitor(QObject):
                 return reaction  # one reaction per poll, at most
         return None
 
+    def react_now(self) -> Reaction | None:
+        """React to whatever is on screen this instant, ignoring the rationing.
+
+        This is what the tray's "React to what I'm doing" does: proving the
+        awareness layer works should not mean waiting out a ten minute cooldown.
+        """
+        current = self._read()
+        self._previous = current
+        category = categorise(current.foreground)
+        signal = (
+            Signal(f"focus:{category}", subject=category)
+            if category
+            else Signal("user_returned", data={"away_minutes": 0})
+        )
+        reaction = self.governor.force(
+            signal,
+            current.at,
+            current.day,
+            ai_enabled=bool(self.config.get("awareness_ai_replies", False)),
+        )
+        if reaction is not None:
+            log.info("Reacting on request to %s", reaction.trigger)
+            if self.on_reaction:
+                self.on_reaction(reaction)
+        return reaction
+
     def _publish(self, signal: Signal) -> None:
         event = SIGNAL_EVENTS.get(signal.key)
         if event is None and signal.key.startswith("launch:"):
             event = EventType.ENV_APP_LAUNCHED
+        if event is None and signal.key.startswith("focus:"):
+            event = EventType.ENV_APP_FOCUSED
         if event is None:
             return
         self.bus.emit(event, category=signal.subject, **signal.data)
@@ -187,29 +221,40 @@ class EnvironmentMonitor(QObject):
         return signals
 
     def _detect_focus(self, previous: Snapshot, current: Snapshot) -> list[Signal]:
-        """Track how long one kind of app has held the foreground."""
+        """Track what has the foreground, and for how long.
+
+        Two things come out of this: switching to a kind of app, which is what
+        "I opened something" usually means in practice since the process was
+        already running, and settling into one for a very long stretch.
+        """
         category = categorise(current.foreground)
         if category != self._focus_category:
             self._focus_category = category
             self._focus_since = current.at if category else None
             self._focus_announced = False
+            self._switch_announced = False
             if category:
                 self.bus.emit(EventType.ENV_APP_FOCUSED, category=category)
             return []
 
-        if category is None or self._focus_since is None or self._focus_announced:
+        if category is None or self._focus_since is None:
             return []
         elapsed = current.at - self._focus_since
-        if elapsed < FOCUS_SESSION_SECONDS:
-            return []
-        self._focus_announced = True
-        return [
-            Signal(
-                "focus_session",
-                subject=category,
-                data={"minutes": int(elapsed // 60)},
+
+        signals: list[Signal] = []
+        if not self._switch_announced and elapsed >= FOCUS_DWELL_SECONDS:
+            self._switch_announced = True
+            signals.append(Signal(f"focus:{category}", subject=category))
+        if not self._focus_announced and elapsed >= FOCUS_SESSION_SECONDS:
+            self._focus_announced = True
+            signals.append(
+                Signal(
+                    "focus_session",
+                    subject=category,
+                    data={"minutes": int(elapsed // 60)},
+                )
             )
-        ]
+        return signals
 
     def _detect_idle(self, previous: Snapshot, current: Snapshot) -> list[Signal]:
         idle_now = current.idle_seconds >= IDLE_THRESHOLD
@@ -224,6 +269,7 @@ class EnvironmentMonitor(QObject):
             # A long focus stretch does not survive the user leaving the desk.
             self._focus_since = current.at if self._focus_category else None
             self._focus_announced = False
+            self._switch_announced = True   # coming back is not a switch
             return [
                 Signal("user_returned", data={"away_minutes": int(away // 60)})
             ]

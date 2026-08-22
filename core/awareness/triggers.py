@@ -113,6 +113,80 @@ TRIGGERS: dict[str, Trigger] = {
         cooldown=600.0,
         emotion={"curiosity": 0.03},
     ),
+    # Switching to a kind of app. In practice this is what "I just opened
+    # something" means, because the process was usually already running.
+    "focus:coding": Trigger(
+        key="focus:coding",
+        animation="think",
+        lines=("Back to the code. I will supervise.", "Ah, the editor. Go on then."),
+        situation="the user just switched to their code editor",
+        cooldown=2700.0,
+        emotion={"curiosity": 0.05},
+    ),
+    "focus:browser": Trigger(
+        key="focus:browser",
+        animation="curious",
+        lines=("Browsing? I am absolutely not judging. Much.",),
+        situation="the user just switched to their web browser",
+        cooldown=2700.0,
+        emotion={"curiosity": 0.05},
+    ),
+    "focus:terminal": Trigger(
+        key="focus:terminal",
+        animation="smug",
+        lines=("Terminal time. Type something dangerous.",),
+        situation="the user just switched to a terminal",
+        cooldown=2700.0,
+        emotion={"curiosity": 0.04},
+    ),
+    "focus:music": Trigger(
+        key="focus:music",
+        animation="dance",
+        lines=("Changing the song? Good call.",),
+        situation="the user just switched to their music player",
+        cooldown=2700.0,
+        emotion={"happiness": 0.05, "energy": 0.04},
+    ),
+    "focus:design": Trigger(
+        key="focus:design",
+        animation="amazed",
+        lines=("Ooh. Show me when it is done.",),
+        situation="the user just switched to a design or video editing app",
+        cooldown=2700.0,
+        emotion={"curiosity": 0.06},
+    ),
+    "focus:writing": Trigger(
+        key="focus:writing",
+        animation="think",
+        lines=("Words. Bold of you.",),
+        situation="the user just switched to a writing app",
+        cooldown=2700.0,
+        emotion={"curiosity": 0.04},
+    ),
+    "focus:chat": Trigger(
+        key="focus:chat",
+        animation="mischievous",
+        lines=("Talking to other humans? I see how it is.",),
+        situation="the user just switched to a chat app",
+        cooldown=2700.0,
+        emotion={"affection": 0.03},
+    ),
+    "focus:office": Trigger(
+        key="focus:office",
+        animation="deadpan",
+        lines=("Spreadsheets. Riveting.",),
+        situation="the user just switched to a document or spreadsheet app",
+        cooldown=2700.0,
+        emotion={"energy": -0.02},
+    ),
+    "focus:*": Trigger(
+        key="focus:*",
+        animation="look",
+        lines=(),
+        speaks=False,
+        cooldown=900.0,
+        emotion={"curiosity": 0.02},
+    ),
     "focus_session": Trigger(
         key="focus_session",
         animation="stretch",
@@ -164,10 +238,11 @@ TRIGGERS: dict[str, Trigger] = {
 
 
 def trigger_for(signal: Signal) -> Trigger | None:
-    """The trigger for a signal, falling back to the generic launch rule."""
+    """The trigger for a signal, falling back to the family's generic rule."""
     trigger = TRIGGERS.get(signal.key)
-    if trigger is None and signal.key.startswith("launch:"):
-        trigger = TRIGGERS.get("launch:*")
+    if trigger is None and ":" in signal.key:
+        family = signal.key.split(":", 1)[0]
+        trigger = TRIGGERS.get(f"{family}:*")
     return trigger
 
 
@@ -250,6 +325,32 @@ class TriggerGovernor:
                 emotion=dict(trigger.emotion),
             )
 
+        return self._speak(trigger, signal, now, ai_enabled)
+
+    def force(self, signal: Signal, now: float, day: int, *, ai_enabled: bool = False):
+        """React regardless of the rationing, for an explicit request.
+
+        The cooldowns are still stamped, so forcing a reaction does not leave
+        Glitch free to immediately volunteer another one on its own.
+        """
+        self._roll_day(day)
+        trigger = trigger_for(signal)
+        if trigger is None:
+            return None
+        if not trigger.lines and not trigger.situation:
+            self._fired_at[trigger.key] = now
+            self._last_emoted_at = now
+            return Reaction(
+                trigger=trigger.key,
+                animation=trigger.animation,
+                emotion=dict(trigger.emotion),
+            )
+        return self._speak(trigger, signal, now, ai_enabled)
+
+    def _speak(
+        self, trigger: Trigger, signal: Signal, now: float, ai_enabled: bool
+    ) -> Reaction:
+        """Build a speaking reaction and spend the budget on it."""
         line: str | None = None
         situation: str | None = None
         if ai_enabled and trigger.situation:

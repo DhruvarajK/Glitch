@@ -42,8 +42,8 @@ DEFAULTS: dict[str, Any] = {
     "awareness_enabled": True,
     "awareness_ai_replies": False,
     "awareness_read_window_titles": False,
-    "proactive_cooldown_seconds": 600.0,
-    "proactive_daily_limit": 6,
+    "proactive_cooldown_seconds": 240.0,
+    "proactive_daily_limit": 20,
     # Advanced
     "debug": False,
     "logging_level": "INFO",

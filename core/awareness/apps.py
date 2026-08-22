@@ -28,6 +28,9 @@ APP_CATEGORIES: dict[str, str] = {
     "pwsh.exe": "terminal",
     "cmd.exe": "terminal",
     "alacritty.exe": "terminal",
+    "mintty.exe": "terminal",
+    "git-bash.exe": "terminal",
+    "conemu64.exe": "terminal",
     "wezterm-gui.exe": "terminal",
     # Browsers
     "chrome.exe": "browser",

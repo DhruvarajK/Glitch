@@ -88,6 +88,7 @@ class GlitchApplication:
         self.tray.on_toggle_visibility = self.set_pet_visible
         self.tray.on_pause_movement = self.pet.pause_movement
         self.tray.on_wake = self.pet.wake
+        self.tray.on_react_now = self.react_now
         self.tray.on_chat = self.open_chat
         self.tray.on_settings = self.open_settings
 
@@ -313,6 +314,15 @@ class GlitchApplication:
             or self._active_request is not None
             or self.brain.busy
         )
+
+    def react_now(self) -> None:
+        """Tray-requested reaction: react to the desktop as it is right now."""
+        if self.pet.state is PetState.SLEEPING:
+            self.pet.wake()
+        self.bubble.dismiss()
+        if self.awareness.react_now() is None:
+            self.bubble.show_text("Nothing worth commenting on right now.")
+            self.pet.react("confused")
 
     def perform_reaction(self, reaction: Reaction) -> None:
         """Act on something Glitch noticed, without the user asking."""
