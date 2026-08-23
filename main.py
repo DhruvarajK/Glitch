@@ -13,6 +13,16 @@ from core.utils.logger import setup_logging
 
 
 def main() -> int:
+    # On Windows, register an explicit AppUserModelID so the taskbar groups windows
+    # under Glitch and displays the custom app icon instead of python.exe's icon.
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            app_id = f"{APP_ORG}.{APP_NAME}.{APP_VERSION}"
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+        except Exception:
+            pass
+
     # Read config before Qt starts so the log level is right from the first line.
     config = ConfigManager()
     log = setup_logging(debug=bool(config.get("debug")))
@@ -22,7 +32,11 @@ def main() -> int:
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(APP_VERSION)
     app.setOrganizationName(APP_ORG)
-    app.setWindowIcon(QIcon(str(ICONS_DIR / "glitch.png")))
+    
+    icon_path = ICONS_DIR / "glitch.ico"
+    if not icon_path.exists():
+        icon_path = ICONS_DIR / "glitch.png"
+    app.setWindowIcon(QIcon(str(icon_path)))
     # The tray keeps Glitch alive even with no visible windows.
     app.setQuitOnLastWindowClosed(False)
 

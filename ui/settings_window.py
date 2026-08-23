@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Callable
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -34,7 +35,7 @@ from core.ai.prompts import PERSONALITIES
 from core.persistence import credentials
 from core.persistence.config import ConfigManager
 from core.persistence.database import Database
-from core.utils.constants import APP_NAME
+from core.utils.constants import APP_NAME, ICONS_DIR
 from core.utils.logger import get_logger
 
 log = get_logger("settings")
@@ -66,6 +67,10 @@ class SettingsWindow(QDialog):
         self.reminders = reminders
 
         self.setWindowTitle(f"{APP_NAME} Settings")
+        icon_path = ICONS_DIR / "glitch.ico"
+        if not icon_path.exists():
+            icon_path = ICONS_DIR / "glitch.png"
+        self.setWindowIcon(QIcon(str(icon_path)))
         self.setMinimumWidth(420)
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
 
