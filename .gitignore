@@ -7,7 +7,6 @@ data/config.json
 data/glitch.db
 build/
 dist/
-*.spec
 .pytest_cache/
 .idea/
 .vscode/
