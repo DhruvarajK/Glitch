@@ -58,15 +58,26 @@ jobs:
           Write-Host "Glitch.exe created successfully."
           Write-Host "Size: $([math]::Round($size / 1MB, 2)) MB"
 
-      # Normal commits get an Actions artifact.
+      # Upload build artifact for all workflow runs
       - name: Upload build artifact
-        if: startsWith(github.ref, 'refs/heads/')
         uses: actions/upload-artifact@v4
         with:
           name: Glitch-Windows-${{ github.sha }}
           path: dist/Glitch.exe
           if-no-files-found: error
           retention-days: 14
+
+      # Commits pushed to main automatically update a rolling 'latest' pre-release
+      - name: Update Continuous Release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Glitch - Continuous Build"
+          body: "Automated continuous build updated from commit ${{ github.sha }} on `main`."
+          prerelease: true
+          files: dist/Glitch.exe
+          fail_on_unmatched_files: true
 
       # Version tags such as v0.1.0 create a proper GitHub Release.
       - name: Create GitHub Release
