@@ -1,0 +1,79 @@
+name: Build Glitch for Windows
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Glitch.exe
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Validate assets
+        run: |
+          python scripts/validate_assets.py
+
+      - name: Run tests
+        run: |
+          python -m pytest
+
+      - name: Build Glitch
+        run: |
+          python scripts/build.py
+
+      - name: Verify executable
+        shell: pwsh
+        run: |
+          if (!(Test-Path "dist/Glitch.exe")) {
+            Write-Error "dist/Glitch.exe was not created."
+            exit 1
+          }
+
+          $size = (Get-Item "dist/Glitch.exe").Length
+          Write-Host "Glitch.exe created successfully."
+          Write-Host "Size: $([math]::Round($size / 1MB, 2)) MB"
+
+      # Normal commits get an Actions artifact.
+      - name: Upload build artifact
+        if: startsWith(github.ref, 'refs/heads/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: Glitch-Windows-${{ github.sha }}
+          path: dist/Glitch.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      # Version tags such as v0.1.0 create a proper GitHub Release.
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/Glitch.exe
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
