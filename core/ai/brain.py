@@ -16,7 +16,7 @@ from typing import Any
 from PySide6.QtCore import QObject, Signal
 
 from core.ai.conversation import ConversationManager
-from core.ai.models import RESPONSE_JSON_SCHEMA, AIResponse
+from core.ai.models import ACTIONS, EMOTIONS, RESPONSE_JSON_SCHEMA, AIResponse
 from core.ai.prompts import FAILURE_REPLIES, PromptContext, build_system_prompt
 from core.persistence.config import ConfigManager
 from core.persistence.credentials import get_api_key
@@ -81,6 +81,25 @@ def extract_partial_message(raw: str) -> str:
     return "".join(out)
 
 
+def extract_early_fields(raw: str) -> dict[str, Any] | None:
+    """Read emotion, intensity and action out of a stream still in flight.
+
+    The schema puts them ahead of `message`, so by the time that key appears
+    they are complete and the object can be closed early and parsed. Returns
+    None until then, and on anything that does not parse: this only ever gets
+    the pet reacting sooner, so a miss costs nothing.
+    """
+    key = raw.find('"message"')
+    if key == -1:
+        return None
+    head = raw[:key].rstrip().rstrip(",")
+    try:
+        parsed = json.loads(head + "}")
+    except ValueError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 def classify_error(exc: BaseException) -> str:
     """Map an exception onto one of the FAILURE_REPLIES keys."""
     name = type(exc).__name__.lower()
@@ -132,6 +151,9 @@ class AIBrain(QObject):
     """
 
     request_started = Signal(str)
+    # request_id, emotion, intensity, action. Emitted mid-stream, as soon as
+    # the feeling is known and long before the line itself has finished.
+    emotion_previewed = Signal(str, str, float, str)
     token_received = Signal(str, str)      # request_id, message text so far
     response_received = Signal(str, object)  # request_id, AIResponse
     request_failed = Signal(str, str, str)   # request_id, kind, user-facing text
@@ -234,13 +256,13 @@ class AIBrain(QObject):
         with self._lock:
             self._current_id = request_id
 
-        if not get_api_key():
-            self.request_failed.emit(request_id, "auth", FAILURE_REPLIES["auth"])
-            return request_id
-
         if self.over_budget():
             log.info("Daily budget reached; refusing request %s", request_id)
             self.request_failed.emit(request_id, "budget", FAILURE_REPLIES["budget"])
+            return request_id
+
+        if not get_api_key():
+            self.request_failed.emit(request_id, "auth", FAILURE_REPLIES["auth"])
             return request_id
 
         self.conversation.add_user_message(message)
@@ -323,6 +345,7 @@ class AIBrain(QObject):
 
         raw = ""
         emitted = ""
+        previewed = False
         input_tokens = output_tokens = 0
         async for chunk in stream:
             if chunk.usage is not None:
@@ -335,6 +358,22 @@ class AIBrain(QObject):
             if not piece:
                 continue
             raw += piece
+            if not previewed:
+                # The feeling lands whole tokens before the line does. Letting
+                # the UI have it now is the difference between the pet
+                # reacting as it speaks and reacting once it has finished.
+                early = extract_early_fields(raw)
+                if early is not None:
+                    previewed = True
+                    emotion = str(early.get("emotion") or "")
+                    action = str(early.get("action") or "talk")
+                    if emotion in EMOTIONS:
+                        self.emotion_previewed.emit(
+                            request_id,
+                            emotion,
+                            float(early.get("intensity") or 0.5),
+                            action if action in ACTIONS else "talk",
+                        )
             partial = extract_partial_message(raw)
             if partial and partial != emitted:
                 emitted = partial
