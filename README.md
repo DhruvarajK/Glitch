@@ -11,6 +11,7 @@
     <a href="https://docs.pytest.org/"><img src="https://img.shields.io/badge/Tests-Pytest-0A9EDC?style=flat-square&logo=pytest&logoColor=white" alt="Pytest" /></a>
     <a href="https://pyinstaller.org/"><img src="https://img.shields.io/badge/Packaging-PyInstaller-2C2D72?style=flat-square&logo=python&logoColor=white" alt="PyInstaller" /></a>
     <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows Platform" />
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square" alt="Apache-2.0 License" /></a>
   </p>
 </div>
 
@@ -36,6 +37,7 @@
 - [Packaging & Distribution](#packaging--distribution)
 - [Data Locations](#data-locations)
 - [Audio Pipeline](#audio-pipeline)
+- [License](#license)
 
 ---
 
@@ -327,3 +329,10 @@ To enable audio cues:
 1. Place standard `.wav` audio files into `assets/sounds/` adhering to the naming convention:
    - `click.wav`, `drag.wav`, `drop.wav`, `sleep.wav`, `wake.wav`, `talk.wav`, `react.wav`
 2. Enable sound playback in **Settings -> Behaviour**. Unassigned sound events fail silently without performance impact.
+
+---
+
+## License
+
+This project is licensed under the Apache License, Version 2.0. See the [LICENSE](LICENSE) file for details.
+

@@ -79,11 +79,15 @@ jobs:
           files: dist/Glitch.exe
           fail_on_unmatched_files: true
 
-      # Version tags such as v0.1.0 create a proper GitHub Release.
+      # Version tags such as v0.1.0 create a proper official GitHub Release with 'Latest' badge.
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          name: "Glitch ${{ github.ref_name }}"
+          draft: false
+          prerelease: false
+          make_latest: "true"
           files: dist/Glitch.exe
           generate_release_notes: true
           fail_on_unmatched_files: true
