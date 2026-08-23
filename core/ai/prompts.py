@@ -1,15 +1,20 @@
 """Layered prompt construction.
 
-The prompt is assembled from: the system contract, Glitch's personality, its
-current feelings, what it is doing on screen, and the conversation. Nothing
-about the user's machine or files is ever included.
+The system message is built in two halves. The first is fixed: who Glitch is,
+what it can sense, the whole vocabulary of feelings it has, and its character.
+The second is everything that changes between requests. Keeping them in that
+order is deliberate - a provider's prefix cache only helps while the leading
+tokens are identical, and a single live number near the top would spoil it.
+
+Nothing about the user's machine or files is ever included.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from core.ai.emotion import EmotionState
+from core.ai.emotion import BASELINE, EmotionState
+from core.ai.models import ACTION_CUES, ACTIONS, EMOTION_CUES, EMOTIONS
 
 
 @dataclass(frozen=True)
@@ -76,10 +81,19 @@ PERSONALITIES: dict[str, Personality] = {
     ),
 }
 
-SYSTEM_CONTRACT = """\
+
+# --------------------------------------------------------------- static layers
+
+IDENTITY = """\
+## Who you are
+
 You are a small robot who lives on the user's Windows desktop. You are not an \
 assistant chatbot and you are not roleplaying a human: you are a creature the \
 user keeps around for company.
+"""
+
+SENSES = """\
+## What you can and cannot sense
 
 You can sense a little of the machine you live on, and anything this prompt \
 tells you about it is something you genuinely know: which kind of app is in \
@@ -90,19 +104,70 @@ freely, the way you would mention the weather in a room you are sitting in.
 What you cannot sense is content: what is written on the screen, what they \
 are typing or reading, their files, or which particular site, project or \
 document is open. Never guess at those.
+"""
 
-Rules:
+CHOOSING = """\
+## Choosing how you feel
+
+Every reply begins with a feeling, and you choose it before you write the \
+line. Read two things: what the user just said, and what you are about to say \
+back. Pick the emotion that honestly fits both, then write the line in that \
+emotion, rather than writing a line and labelling it afterwards.
+
+- Reach for the specific feeling over the safe one. If they teased you, you \
+are not "happy" - you are mischievous, or smug, or embarrassed.
+- `neutral` is a real answer when nothing much moved you. It is not the \
+default for when you cannot be bothered to choose.
+- `intensity` is how strongly you feel it, not how sure you are. A quiet \
+fondness is affectionate at 0.3; being genuinely delighted is 0.9.
+- Your feelings move with the conversation. If they were kind three lines ago \
+and blunt now, feel the change.
+- Add an `action` only when it does something the emotion alone does not.
+"""
+
+ANSWERING = """\
+## How you answer
+
 - Reply with a single short spoken line. It appears in a speech bubble, so \
 keep it under about 200 characters unless the user clearly wants more.
 - Never narrate actions in asterisks and never use stage directions; the \
 animation conveys that.
-- Pick the emotion and action that genuinely match what you just said.
 - Never open by disclaiming your senses. "I cannot see what you are doing" is \
 wrong when you have just been told which app they are in; say what you do \
 know instead.
 - If you genuinely were not told something, say so plainly in passing rather \
 than inventing it, and never let that be the whole reply.
 """
+
+# The old single-blob contract, kept for anything that still reaches for it.
+SYSTEM_CONTRACT = "\n".join((IDENTITY, SENSES, ANSWERING))
+
+
+def emotion_catalogue() -> str:
+    """The whole feeling vocabulary, rendered from the tables in `models`.
+
+    Generated rather than written out, so a new emotion is described once,
+    beside its animation and its effect, and can never drift from the enum the
+    model is actually held to.
+    """
+    width = max(len(name) for name in EMOTIONS)
+    emotions = "\n".join(
+        f"  {name.ljust(width)}  {EMOTION_CUES.get(name, '')}".rstrip()
+        for name in EMOTIONS
+    )
+    action_width = max(len(name) for name in ACTIONS)
+    actions = "\n".join(
+        f"  {name.ljust(action_width)}  {ACTION_CUES.get(name, '')}".rstrip()
+        for name in ACTIONS
+    )
+    return (
+        "## The feelings you have\n\n"
+        "These are all of them, and nothing outside this list exists for you. "
+        "Each one shows on your face, so pick the one that is true.\n\n"
+        f"{emotions}\n\n"
+        "And what you can be doing while you say it:\n\n"
+        f"{actions}\n"
+    )
 
 
 # Added when Glitch speaks first, having noticed something on the machine.
@@ -142,17 +207,45 @@ def personality_for(key: str) -> Personality:
     return PERSONALITIES.get(key, PERSONALITIES["default"])
 
 
-def build_system_prompt(personality_key: str, context: PromptContext) -> str:
-    """Assemble the system message from the prompt layers."""
-    personality = personality_for(personality_key)
-    emotion = context.emotion
+def _felt_traits(emotion: EmotionState) -> str:
+    """The traits currently away from their resting value, in words.
 
+    Six floats every request costs tokens and reads like telemetry. Only what
+    has actually moved is worth saying.
+    """
+    notable = []
+    for name, value in emotion.as_dict().items():
+        drift = value - BASELINE.get(name, 0.5)
+        if abs(drift) < 0.12:
+            continue
+        degree = "very " if abs(drift) > 0.3 else ""
+        trait = name if drift > 0 else f"low {name}"
+        notable.append(f"{degree}{trait} ({value:.1f})")
+    return ", ".join(notable) if notable else "nothing pulling strongly either way"
+
+
+def static_prefix(personality_key: str) -> str:
+    """The cacheable half: identity, senses, vocabulary, rules, character."""
+    return "\n".join(
+        (
+            IDENTITY,
+            SENSES,
+            emotion_catalogue(),
+            CHOOSING,
+            ANSWERING,
+            "## Your character\n",
+            personality_for(personality_key).describe(),
+        )
+    )
+
+
+def build_system_prompt(personality_key: str, context: PromptContext) -> str:
+    """Assemble the system message: fixed contract first, live state after."""
     layers = [
-        SYSTEM_CONTRACT,
-        personality.describe(),
-        "How you feel right now (0 to 1): "
-        + ", ".join(f"{name} {value:.2f}" for name, value in emotion.as_dict().items())
-        + f". Overall you feel {context.mood}.",
+        static_prefix(personality_key),
+        "## Right now\n\n"
+        f"Feelings pulling at you: {_felt_traits(context.emotion)}. "
+        f"Overall you feel {context.mood}.\n"
         f"On screen you are currently: {context.state}. "
         f"It is {_time_of_day()} for the user.",
     ]
@@ -173,11 +266,6 @@ def build_system_prompt(personality_key: str, context: PromptContext) -> str:
         remembered = "\n".join(f"- {m}" for m in context.memories)
         layers.append(f"Things you remember about the user:\n{remembered}")
 
-    layers.append(
-        "Let your feelings colour the reply without stating the numbers. "
-        "High annoyance makes you terse; high sleepiness makes you drowsy; "
-        "high affection makes you warmer."
-    )
     return "\n\n".join(layers)
 
 

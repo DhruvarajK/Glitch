@@ -186,3 +186,116 @@ def test_unprompted_situation_reaches_the_prompt():
     )
     assert "spoke first" in prompt.lower() or "Nobody asked" in prompt
     assert "just opened a code editor" in prompt
+
+
+# ------------------------------------------------- the full feeling vocabulary
+def test_every_emotion_and_action_has_a_cue():
+    """A new emotion is useless to the model until it is described."""
+    from core.ai.models import ACTION_CUES, ACTIONS, EMOTION_CUES, EMOTIONS
+
+    for emotion in EMOTIONS:
+        assert EMOTION_CUES.get(emotion), emotion
+    for action in ACTIONS:
+        assert ACTION_CUES.get(action), action
+    assert set(EMOTION_CUES) == set(EMOTIONS)
+    assert set(ACTION_CUES) == set(ACTIONS)
+
+
+def test_the_prompt_teaches_every_emotion_it_offers():
+    from core.ai.models import ACTION_CUES, ACTIONS, EMOTION_CUES, EMOTIONS
+
+    prompt = build_system_prompt("default", PromptContext())
+    for emotion in EMOTIONS:
+        assert emotion in prompt, emotion
+        assert EMOTION_CUES[emotion] in prompt, emotion
+    for action in ACTIONS:
+        assert ACTION_CUES[action] in prompt, action
+
+
+def test_the_prompt_says_to_pick_the_feeling_before_the_line():
+    prompt = build_system_prompt("default", PromptContext())
+    assert "before you write the line" in prompt
+
+
+def test_emotion_is_generated_before_the_message():
+    """Order is load-bearing: the pet reacts while the line is still coming."""
+    from core.ai.models import RESPONSE_JSON_SCHEMA
+
+    schema = RESPONSE_JSON_SCHEMA["schema"]
+    assert schema["required"] == ["emotion", "intensity", "action", "message"]
+    assert list(schema["properties"]) == ["emotion", "intensity", "action", "message"]
+
+
+def test_animation_for_matches_the_response_it_came_from():
+    from core.ai.models import animation_for
+
+    for emotion, action in (("happy", "talk"), ("sad", "laugh"), ("bored", "think")):
+        response = AIResponse(message="hi", emotion=emotion, action=action)
+        assert animation_for(emotion, action) == response.animation()
+
+
+# ------------------------------------------------------------ prompt caching
+def test_only_the_tail_of_the_prompt_moves_between_requests():
+    """The fixed half must stay byte-identical or no prefix cache can hit."""
+    from core.ai.emotion import EmotionState
+    from core.ai.prompts import static_prefix
+
+    quiet = build_system_prompt("default", PromptContext())
+    busy = build_system_prompt(
+        "default",
+        PromptContext(
+            state="walking",
+            mood="annoyed",
+            emotion=EmotionState(annoyance=0.9, happiness=0.1),
+            focus="coding",
+            memories=["User prefers concise answers"],
+        ),
+    )
+    prefix = static_prefix("default")
+    assert quiet.startswith(prefix)
+    assert busy.startswith(prefix)
+    # The fixed half is the bulk of it, which is the point.
+    assert len(prefix) > 0.5 * len(quiet)
+
+
+def test_only_the_traits_that_have_moved_are_sent():
+    from core.ai.emotion import EmotionState
+    from core.ai.prompts import _felt_traits
+
+    assert "nothing pulling strongly" in _felt_traits(EmotionState())
+    felt = _felt_traits(EmotionState(annoyance=0.85, happiness=0.15))
+    assert "very annoyance" in felt
+    assert "low happiness" in felt
+    assert "curiosity" not in felt
+
+
+# ------------------------------------------------ reacting mid-stream
+def test_early_fields_are_unavailable_until_the_message_key_arrives():
+    from core.ai.brain import extract_early_fields
+
+    assert extract_early_fields('{"emotion":"smug","intensity":0.8') is None
+    assert extract_early_fields("") is None
+
+
+def test_early_fields_are_readable_once_the_message_key_arrives():
+    from core.ai.brain import extract_early_fields
+
+    early = extract_early_fields(
+        '{"emotion":"smug","intensity":0.8,"action":"laugh","message":"ha'
+    )
+    assert early == {"emotion": "smug", "intensity": 0.8, "action": "laugh"}
+
+
+def test_early_fields_survive_a_whole_response():
+    from core.ai.brain import extract_early_fields
+
+    raw = json.dumps(
+        {"emotion": "curious", "intensity": 0.4, "action": "think", "message": "hm?"}
+    )
+    assert extract_early_fields(raw)["emotion"] == "curious"
+
+
+def test_early_fields_give_up_quietly_on_nonsense():
+    from core.ai.brain import extract_early_fields
+
+    assert extract_early_fields('{"emotion":,"message"') is None

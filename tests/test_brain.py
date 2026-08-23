@@ -73,9 +73,14 @@ def _split(payload: dict, size: int = 7) -> list[str]:
 
 def run_request(qt_app, brain, message="hello", timeout_ms=5000) -> dict:
     """Drive the Qt loop until the request settles; collect what was emitted."""
-    seen: dict = {"tokens": [], "response": None, "failure": None}
+    seen: dict = {"tokens": [], "previews": [], "response": None, "failure": None}
     loop = QEventLoop()
 
+    brain.emotion_previewed.connect(
+        lambda _id, emotion, intensity, action: seen["previews"].append(
+            (emotion, intensity, action, len(seen["tokens"]))
+        )
+    )
     brain.token_received.connect(lambda _id, text: seen["tokens"].append(text))
     brain.response_received.connect(
         lambda _id, response: (seen.update(response=response), loop.quit())
@@ -196,3 +201,38 @@ def test_request_uses_the_structured_schema(qt_app, brain):
 def test_ai_disabled_never_starts_a_request(qt_app, brain, config):
     config.set("ai_enabled", False)
     assert brain.ask("hello", PromptContext()) is None
+
+
+def test_the_emotion_arrives_before_a_word_of_the_line(qt_app, brain):
+    """The whole point of putting emotion first: react while still speaking."""
+    payload = {
+        "emotion": "mischievous",
+        "intensity": 0.9,
+        "action": "laugh",
+        "message": "You did that on purpose and we both know it.",
+    }
+    brain._get_client = lambda: FakeClient(_split(payload))
+
+    seen = run_request(qt_app, brain)
+
+    assert seen["failure"] is None
+    assert len(seen["previews"]) == 1, "the preview must fire exactly once"
+    emotion, intensity, action, tokens_so_far = seen["previews"][0]
+    assert (emotion, intensity, action) == ("mischievous", 0.9, "laugh")
+    assert tokens_so_far == 0, "the feeling should beat the first word out"
+    assert seen["response"].emotion == "mischievous"
+
+
+def test_an_unknown_emotion_is_never_previewed(qt_app, brain):
+    """A bad value must not reach the pet ahead of validation."""
+    payload = {
+        "emotion": "smitten",
+        "intensity": 0.5,
+        "action": "talk",
+        "message": "Hi.",
+    }
+    brain._get_client = lambda: FakeClient(_split(payload))
+
+    seen = run_request(qt_app, brain)
+
+    assert seen["previews"] == []

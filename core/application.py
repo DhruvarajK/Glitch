@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QApplication
 from core.ai.brain import AIBrain
 from core.ai.conversation import ConversationManager
 from core.ai.memory import MemoryManager
-from core.ai.models import AIResponse
+from core.ai.models import AIResponse, animation_for
 from core.ai.prompts import OFFLINE_REPLIES, PromptContext
 from core.animation.registry import AnimationRegistry
 from core.awareness.monitor import EnvironmentMonitor
@@ -82,6 +82,9 @@ class GlitchApplication:
         self.conversation = ConversationManager(self.config, self.database)
         self.brain = AIBrain(self.config, self.conversation, self.database)
         self._active_request: str | None = None
+        # The clip already started from the streamed emotion, so the finished
+        # response does not restart it a second time.
+        self._previewed_animation: str | None = None
         self._connect_brain()
 
         self.activity = ActivityTracker(self.database)
@@ -331,6 +334,7 @@ class GlitchApplication:
 
     def _connect_brain(self) -> None:
         self.brain.request_started.connect(self._on_ai_started)
+        self.brain.emotion_previewed.connect(self._on_ai_emotion)
         self.brain.token_received.connect(self._on_ai_token)
         self.brain.response_received.connect(self._on_ai_response)
         self.brain.request_failed.connect(self._on_ai_failed)
@@ -346,13 +350,25 @@ class GlitchApplication:
 
     def _on_ai_started(self, request_id: str) -> None:
         self._active_request = request_id
+        self._previewed_animation = None
         self.bus.emit(EventType.AI_REQUEST_STARTED, id=request_id)
         self.pet.enter_state(PetState.THINKING, force=True)
+
+    def _on_ai_emotion(
+        self, request_id: str, emotion: str, intensity: float, action: str
+    ) -> None:
+        """React the moment the feeling is known, well before the line ends."""
+        if not self._is_current(request_id) or action == "sleep":
+            return
+        self._previewed_animation = animation_for(emotion, action)
+        self.pet.react(self._previewed_animation)
 
     def _on_ai_token(self, request_id: str, text: str) -> None:
         if not self._is_current(request_id):
             return
-        if self.pet.state is not PetState.TALKING:
+        # Let a reaction already playing finish; falling back to the talking
+        # loop once it has is nicer than cutting it off mid-clip.
+        if self.pet.state not in (PetState.TALKING, PetState.REACTING):
             self.pet.enter_state(PetState.TALKING, force=True)
         self.bubble.hold(text)
         self.bus.emit(EventType.AI_TOKEN_RECEIVED, id=request_id)
@@ -363,10 +379,13 @@ class GlitchApplication:
         self._active_request = None
         self.bubble.show_text(response.message)
         self.pet.emotion.adjust(response.emotion_deltas())
+        animation = response.animation()
+        previewed, self._previewed_animation = self._previewed_animation, None
         if response.action == "sleep":
             self.pet.sleep()
-        else:
-            self.pet.react(response.animation())
+        elif animation != previewed:
+            # Only if the stream did not already get there first.
+            self.pet.react(animation)
         self.bus.emit(
             EventType.AI_RESPONSE_RECEIVED, id=request_id, emotion=response.emotion
         )
@@ -375,6 +394,7 @@ class GlitchApplication:
         if not self._is_current(request_id):
             return
         self._active_request = None
+        self._previewed_animation = None
         self.bubble.show_text(message)
         self.pet.react("confused")
         self.bus.emit(EventType.AI_REQUEST_FAILED, id=request_id, kind=kind)
