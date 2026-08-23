@@ -1,4 +1,4 @@
-# Glitch AI Desktop Pet — Complete Updated Implementation Plan
+# Glitch AI Desktop Pet - Implementation Plan
 
 ## 1. Project Goal
 
