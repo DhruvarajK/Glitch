@@ -26,6 +26,8 @@ DEFAULTS: dict[str, Any] = {
     "movement_speed": 80.0,
     "autonomous_movement": True,
     "multi_monitor_roaming": True,
+    # Stand on the top edges of open windows, not just the desktop.
+    "window_walking": True,
     # Behaviour tuning
     "reaction_frequency": 1.0,
     "sleep_enabled": True,
@@ -69,6 +71,7 @@ _VALIDATORS: dict[str, Callable[[Any], Any]] = {
     "movement_speed": lambda v: min(max(float(v), 10.0), 400.0),
     "autonomous_movement": bool,
     "multi_monitor_roaming": bool,
+    "window_walking": bool,
     "reaction_frequency": lambda v: min(max(float(v), 0.0), 3.0),
     "sleep_enabled": bool,
     "sounds_enabled": bool,

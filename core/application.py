@@ -22,6 +22,7 @@ from core.persistence.config import ConfigManager
 from core.persistence.database import Database
 from core.pet.controller import PetController
 from core.pet.state import PetState
+from core.screen.desktop_windows import create_platform_source
 from core.screen.manager import ScreenManager
 from core.tools import intents
 from core.tools.activity import ActivityTracker
@@ -66,7 +67,10 @@ class GlitchApplication:
         self.registry = AnimationRegistry(target_height=int(BASE_PET_HEIGHT * scale))
         self.registry.preload(["idle", "walk"])
 
-        self.pet = PetController(self.config, self.registry, self.screens, self.bus)
+        self.platforms = create_platform_source(self.screens)
+        self.pet = PetController(
+            self.config, self.registry, self.screens, self.bus, platforms=self.platforms
+        )
 
         self.memory = MemoryManager(self.database)
         self.sounds = SoundPlayer(self.config)

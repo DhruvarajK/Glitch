@@ -12,8 +12,19 @@ from core.pet.controller import PetController
 from core.pet.state import PetState
 from core.screen.geometry import Rect
 from core.screen.manager import ScreenManager
+from core.screen.platforms import Platform
 
 DT = 1 / 30
+
+
+class FakePlatforms:
+    """Stands in for the desktop's real windows."""
+
+    def __init__(self, *platforms: Platform) -> None:
+        self.items = list(platforms)
+
+    def platforms(self) -> list[Platform]:
+        return self.items
 
 
 @pytest.fixture()
@@ -147,6 +158,85 @@ def test_losing_a_monitor_pulls_the_pet_back_on_screen(pet):
     pet.screens._screens = [Rect(0, 0, 1000, 800)]
     pet._on_screens_changed()
     assert pet.x <= 1000 - pet.width
+
+
+# ---------------------------------------------------------- window walking
+def test_falling_onto_a_window_lands_on_it(pet):
+    pet.pause_movement(True)
+    pet.platforms = FakePlatforms(Platform(1, Rect(0, 500, 400, 300)))
+    pet.set_position(100, 100)
+    pet.physics.body.on_ground = False
+    advance(pet, 4)
+    assert pet.y == 500 - pet.height
+    assert pet._standing_on == 1
+
+
+def test_walking_off_a_window_drops_to_the_desktop(pet):
+    pet.pause_movement(True)
+    pet.platforms = FakePlatforms(Platform(1, Rect(0, 500, 400, 300)))
+    pet.set_position(300, 500 - pet.height)
+    pet.physics.body.on_ground = True
+    pet._standing_on = 1
+    pet.walk_to(900)
+    advance(pet, 15)
+    assert pet.x > 400
+    assert pet.y == 800 - pet.height
+    assert pet._standing_on is None
+
+
+def test_dropping_the_pet_onto_a_window_lands_on_it(pet):
+    pet.pause_movement(True)
+    pet.platforms = FakePlatforms(Platform(1, Rect(0, 500, 400, 300)))
+    # The grab offset is (10, 10), so the mouse leads the pet by that much.
+    pet.begin_drag(int(pet.x) + 10, int(pet.y) + 10)
+    # Released with its feet just inside the window, as if onto a title bar.
+    pet.drag_to(110, int(500 - pet.height + 20) + 10)
+    pet.end_drag()
+    advance(pet, 2)
+    assert pet.y == 500 - pet.height
+    assert pet._standing_on == 1
+
+
+def test_dropping_the_pet_well_below_a_window_still_falls(pet):
+    pet.pause_movement(True)
+    pet.platforms = FakePlatforms(Platform(1, Rect(0, 300, 400, 400)))
+    pet.begin_drag(int(pet.x) + 10, int(pet.y) + 10)
+    pet.drag_to(110, 610)  # deep inside the window, nowhere near its edge
+    pet.end_drag()
+    advance(pet, 3)
+    assert pet.y == 800 - pet.height
+
+
+def test_a_window_above_the_pet_is_not_stood_on(pet):
+    pet.pause_movement(True)
+    pet.platforms = FakePlatforms(Platform(1, Rect(0, 500, 400, 300)))
+    pet.set_position(100, 800 - pet.height)
+    advance(pet, 2)
+    # The window's top edge is well above the floor; Glitch must not snap up.
+    assert pet.y == 800 - pet.height
+    assert pet._standing_on is None
+
+
+def test_a_closing_window_drops_the_pet(pet):
+    pet.pause_movement(True)
+    platforms = FakePlatforms(Platform(1, Rect(0, 500, 400, 300)))
+    pet.platforms = platforms
+    pet.set_position(100, 500 - pet.height)
+    pet.physics.body.on_ground = True
+    pet._standing_on = 1
+    pet.update(DT)
+    platforms.items.clear()
+    advance(pet, 4)
+    assert pet.y == 800 - pet.height
+
+
+def test_window_walking_can_be_switched_off(pet):
+    pet.config.set("window_walking", False)
+    pet.platforms = FakePlatforms(Platform(1, Rect(0, 500, 400, 300)))
+    pet.set_position(100, 100)
+    pet.physics.body.on_ground = False
+    advance(pet, 4)
+    assert pet.y == 800 - pet.height
 
 
 # ----------------------------------------------------------------- scaling

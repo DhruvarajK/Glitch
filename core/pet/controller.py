@@ -26,6 +26,7 @@ from core.pet.state import (
 )
 from core.pet.state_machine import PetStateMachine
 from core.screen.manager import ScreenManager
+from core.screen.platforms import PlatformSource, find_floor
 from core.utils.constants import BASE_PET_HEIGHT
 from core.utils.logger import get_logger
 
@@ -33,6 +34,10 @@ log = get_logger("pet")
 
 # A press that moves less than this is a click, not a drag.
 DRAG_THRESHOLD = 5.0
+# Releasing Glitch this far below a window's top edge still lands it there.
+# Dropping it somewhere is deliberate, so it gets more help than it does while
+# walking, where windows are one-way platforms it rises straight through.
+DROP_SNAP = 48.0
 # How close to the target counts as arrived, in pixels.
 ARRIVAL_TOLERANCE = 6.0
 # A transient state never lasts longer than this, even if its animation loops
@@ -51,12 +56,14 @@ class PetController:
         bus: EventBus,
         emotion: EmotionEngine | None = None,
         rng: random.Random | None = None,
+        platforms: PlatformSource | None = None,
     ) -> None:
         self.config = config
         self.registry = registry
         self.screens = screens
         self.bus = bus
         self.rng = rng or random.Random()
+        self.platforms = platforms
 
         self.emotion = emotion or EmotionEngine()
         self.animation = AnimationController(
@@ -82,6 +89,7 @@ class PetController:
         self._drag_origin = (0.0, 0.0)
         self._drag_pending = False
         self._dragging = False
+        self._standing_on: int | None = None
 
         self.screens.configuration_changed.connect(self._on_screens_changed)
         config.on_change(self._on_config_changed)
@@ -120,8 +128,28 @@ class PetController:
             x, y = self.screens.clamp_position(x, y, self.width, self.height)
         self.physics.body.set_position(x, y)
 
-    def floor_y(self) -> float:
-        return self.screens.floor_for(self.x + self.width / 2, self.y, self.height)
+    def floor_y(self, reference_y: float | None = None) -> float:
+        return self._resolve_floor(reference_y)[0]
+
+    def _resolve_floor(self, reference_y: float | None = None) -> tuple[float, int | None]:
+        """Where Glitch would come to rest, and the window holding it up.
+
+        `reference_y` is the position the answer is judged from, so that a
+        window whose top edge is above Glitch is passed through rather than
+        yanking it upwards. It defaults to where Glitch is now.
+        """
+        y = self.y if reference_y is None else float(reference_y)
+        desktop = self.screens.floor_for(self.x + self.width / 2, y, self.height)
+        if self.platforms is None or not self.config.get("window_walking", True):
+            return desktop, None
+        return find_floor(
+            foot_x=self.x + self.width / 2,
+            pet_height=self.height,
+            reference_y=y,
+            desktop_floor=desktop,
+            platforms=self.platforms.platforms(),
+            standing_on=self._standing_on,
+        )
 
     def remember_position(self) -> None:
         self.config.set("last_position", [round(self.x), round(self.y)])
@@ -206,6 +234,8 @@ class PetController:
         if self._walk_target is None:
             self.enter_state(PetState.IDLE)
             return
+        if not self.physics.body.on_ground:
+            return  # nothing to push against; gravity has it from here
 
         speed = float(self.config.get("movement_speed", 80.0))
         if self.state is PetState.RUNNING:
@@ -264,6 +294,7 @@ class PetController:
                 return
             self._drag_pending = False
             self._dragging = True
+            self._standing_on = None  # carried, so no longer resting on anything
             self.bus.emit(EventType.USER_DRAG_STARTED)
 
         offset_x, offset_y = self._drag_offset
@@ -279,7 +310,11 @@ class PetController:
             return False
         self._dragging = False
         self.set_position(self.x, self.y)
-        self.physics.body.on_ground = abs(self.y - self.floor_y()) < 1.0
+        floor, platform = self._resolve_floor(self.y - DROP_SNAP)
+        # Remembered before it has settled, so the next frame keeps treating
+        # this window as the perch instead of deciding it is out of reach.
+        self._standing_on = platform
+        self.physics.body.on_ground = abs(self.y - floor) < 1.0
         self.bus.emit(EventType.USER_DRAG_ENDED, x=self.x, y=self.y)
         if self.physics.body.on_ground:
             self.enter_state(PetState.DROPPED, force=True)
@@ -312,15 +347,20 @@ class PetController:
 
     def _step_physics(self, dt: float) -> None:
         bounds = self.screens.screen_at(self.x + self.width / 2, self.y + self.height / 2)
+        floor, platform = self._resolve_floor()
         events = self.physics.update(
             dt,
-            floor_y=self.floor_y(),
+            floor_y=floor,
             left_bound=bounds.left,
             right_bound=max(bounds.left, bounds.right - self.width),
         )
+        # Only whatever is underfoot right now counts as a perch: walking off a
+        # window, or that window closing, drops Glitch back into free fall.
+        self._standing_on = platform if self.physics.body.on_ground else None
         if events["hit_left"] or events["hit_right"]:
             self._on_edge_reached()
-        if events["landed"] and self.state is PetState.DRAGGED:
+        # `landed` also fires mid-bounce, so the pose waits for the settled one.
+        if events["landed"] and self.physics.body.on_ground:
             self.enter_state(PetState.DROPPED, force=True)
 
 
@@ -353,6 +393,7 @@ class PetController:
         y = neighbour.bottom - self.height
         self.physics.body.set_position(x, y)
         self.physics.body.on_ground = True
+        self._standing_on = None  # the perch, if any, was on the other monitor
         self._walk_target = target
         log.debug("Crossed onto the adjacent screen at x=%d", x)
         return True
@@ -382,4 +423,5 @@ class PetController:
     def _on_screens_changed(self) -> None:
         self.set_position(self.x, self.y)
         self._walk_target = None
+        self._standing_on = None
         self.bus.emit(EventType.SCREEN_CONFIGURATION_CHANGED)

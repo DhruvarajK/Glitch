@@ -97,6 +97,7 @@ Unlike conventional chatbot wrappers, Glitch is designed from the ground up as a
 - **State Machine**: Driven at a constant 30 Hz tick (`PHYSICS_HZ`). Transitions dynamically between states including `IDLE`, `WALK`, `SIT`, `SLEEP`, `FALL`, `DRAG`, `REACT`, and `THINK`.
 - **Personality & Mood Vector**: Evaluates an internal mood state (energy, curiosity, annoyance, sleepiness) to weight Markovian state decisions every few seconds.
 - **Physics Integration**: Simulates gravity, boundary collisions, drag acceleration, and floor-detection across primary and secondary display geometries.
+- **Window Platforms**: Open application windows are treated as one-way platforms. Glitch lands on a window's top edge, walks along it, rides it as it is moved, and falls back to the desktop once it walks off the end or the window closes, minimises or is covered. Enumeration is confined to `core/screen/desktop_windows.py`; the selection rules are pure geometry in `core/screen/platforms.py`. Disable via **Settings -> Behaviour -> Walk on windows**.
 
 ### Local Intent & Command Engine
 

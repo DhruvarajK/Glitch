@@ -242,6 +242,11 @@ class SettingsWindow(QDialog):
         roaming.toggled.connect(lambda v: self.config.set("multi_monitor_roaming", v))
         form.addRow("Roam across monitors", roaming)
 
+        window_walking = QCheckBox()
+        window_walking.setChecked(bool(self.config.get("window_walking", True)))
+        window_walking.toggled.connect(lambda v: self.config.set("window_walking", v))
+        form.addRow("Walk on windows", window_walking)
+
         sounds = QCheckBox()
         sounds.setChecked(bool(self.config.get("sounds_enabled", False)))
         sounds.toggled.connect(lambda v: self.config.set("sounds_enabled", v))
