@@ -100,6 +100,24 @@ def extract_early_fields(raw: str) -> dict[str, Any] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
+def _httpx_module():
+    """Return the HTTP library the installed openai SDK is built on.
+
+    Recent openai releases moved from `httpx` to pydantic's `httpx2` fork. The
+    client we hand to AsyncOpenAI has to come from the same one, so prefer
+    httpx2 where it exists and fall back to httpx otherwise. Both names appear
+    literally here so a frozen build bundles whichever is installed.
+    """
+    try:
+        import httpx2
+
+        return httpx2
+    except ImportError:
+        import httpx
+
+        return httpx
+
+
 def classify_error(exc: BaseException) -> str:
     """Map an exception onto one of the FAILURE_REPLIES keys."""
     name = type(exc).__name__.lower()
@@ -217,9 +235,9 @@ class AIBrain(QObject):
         if not key:
             raise RuntimeError("No API key configured")
         if self._client is None or key != self._client_key:
-            import httpx
             from openai import AsyncOpenAI
 
+            httpx = _httpx_module()
             http_client = httpx.AsyncClient(
                 timeout=REQUEST_TIMEOUT,
                 limits=httpx.Limits(

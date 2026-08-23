@@ -1,5 +1,7 @@
 PySide6>=6.6
-openai>=1.30
+# openai 3.0 swapped httpx for pydantic's httpx2 fork; the cap keeps the
+# frozen build on one known HTTP stack. See core/ai/brain.py:_httpx_module.
+openai>=1.30,<3
 keyring>=24.0
 platformdirs>=4.0
 pydantic>=2.5
