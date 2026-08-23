@@ -13,7 +13,7 @@ from PySide6.QtCore import QObject, QTimer
 from core.awareness.apps import categorise, is_quiet
 from core.awareness.sensors import Sensor, create_sensor
 from core.awareness.signals import Signal, Snapshot
-from core.awareness.triggers import Reaction, TriggerGovernor
+from core.awareness.triggers import Reaction, TriggerGovernor, on_demand_trigger
 from core.events.bus import EventBus
 from core.events.events import EventType
 from core.persistence.config import ConfigManager
@@ -35,6 +35,10 @@ FOCUS_SESSION_SECONDS = 2700.0
 BATTERY_THRESHOLD = 15.0
 # The small hours, for the late-night nudge.
 LATE_NIGHT_HOURS = range(1, 5)
+# How long the last recognised app stays the answer to "what am I doing" after
+# it loses the foreground. Clicking Glitch's own tray menu takes the focus, so
+# without this the honest answer would always be "no idea".
+RECENT_FOCUS_MEMORY = 900.0
 
 SIGNAL_EVENTS: dict[str, EventType] = {
     "focus_session": EventType.ENV_FOCUS_SESSION,
@@ -81,6 +85,9 @@ class EnvironmentMonitor(QObject):
         self._focus_since: float | None = None
         self._focus_announced = False
         self._switch_announced = False
+        self._recent_category: str | None = None
+        self._recent_since: float | None = None
+        self._recent_seen: float | None = None
         self._idle_since: float | None = None
         self._was_idle = False
         self._late_night_day: int | None = None
@@ -164,24 +171,35 @@ class EnvironmentMonitor(QObject):
         return None
 
     def react_now(self) -> Reaction | None:
-        """React to whatever is on screen this instant, ignoring the rationing.
+        """React to what the user is doing right now, ignoring the rationing.
 
-        This is what the tray's "React to what I'm doing" does: proving the
+        This is what the tray's "React to What I'm Doing" does: proving the
         awareness layer works should not mean waiting out a ten minute cooldown.
+
+        The foreground at this exact instant is usually Glitch itself, because
+        the click that asked for the reaction landed on Glitch's own menu, so
+        the last app the user was actually in is used when that happens.
         """
         current = self._read()
         self._previous = current
-        category = categorise(current.foreground)
-        signal = (
-            Signal(f"focus:{category}", subject=category)
-            if category
-            else Signal("user_returned", data={"away_minutes": 0})
+        self._remember_focus(categorise(current.foreground), current.at)
+        category = self._recent_category
+        minutes = (
+            int((current.at - self._recent_since) // 60)
+            if category and self._recent_since is not None
+            else 0
+        )
+        signal = Signal(
+            f"asked:{category or 'unknown'}",
+            subject=category,
+            data={"minutes": minutes},
         )
         reaction = self.governor.force(
             signal,
             current.at,
             current.day,
             ai_enabled=bool(self.config.get("awareness_ai_replies", False)),
+            trigger=on_demand_trigger(category),
         )
         if reaction is not None:
             log.info("Reacting on request to %s", reaction.trigger)
@@ -228,6 +246,7 @@ class EnvironmentMonitor(QObject):
         already running, and settling into one for a very long stretch.
         """
         category = categorise(current.foreground)
+        self._remember_focus(category, current.at)
         if category != self._focus_category:
             self._focus_category = category
             self._focus_since = current.at if category else None
@@ -255,6 +274,31 @@ class EnvironmentMonitor(QObject):
                 )
             )
         return signals
+
+    def _remember_focus(self, category: str | None, now: float) -> None:
+        """Keep the last app the user was genuinely in, and for how long.
+
+        Unrecognised foregrounds - Glitch's own window, the shell, an app that
+        is not in the table - leave the memory alone rather than erasing it,
+        until nothing recognised has been in front for a good while.
+        """
+        if category:
+            if category != self._recent_category:
+                self._recent_category = category
+                self._recent_since = now
+            self._recent_seen = now
+        elif (
+            self._recent_seen is not None
+            and now - self._recent_seen > RECENT_FOCUS_MEMORY
+        ):
+            self._recent_category = None
+            self._recent_since = None
+            self._recent_seen = None
+
+    @property
+    def current_category(self) -> str | None:
+        """The kind of app the user is in, as far as Glitch can tell."""
+        return self._recent_category
 
     def _detect_idle(self, previous: Snapshot, current: Snapshot) -> list[Signal]:
         idle_now = current.idle_seconds >= IDLE_THRESHOLD

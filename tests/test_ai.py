@@ -167,6 +167,19 @@ def test_the_widened_emotions_are_accepted():
         assert response.animation() == clip
 
 
+def test_glitch_is_told_it_can_sense_the_app_but_not_the_content():
+    """The old contract denied every sense, so it answered "I cannot see"."""
+    prompt = build_system_prompt("default", PromptContext(focus="coding"))
+    assert "see nothing about their screen" not in prompt
+    assert "which kind of app is in front" in prompt
+    assert "What you cannot sense is content" in prompt
+
+
+def test_the_prompt_says_what_the_user_is_in_front_of():
+    prompt = build_system_prompt("default", PromptContext(focus="coding"))
+    assert "Right now the user is coding" in prompt
+
+
 def test_unprompted_situation_reaches_the_prompt():
     prompt = build_system_prompt(
         "default", PromptContext(situation="the user just opened a code editor")

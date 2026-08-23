@@ -26,6 +26,10 @@ from core.utils.logger import get_logger
 log = get_logger("brain")
 
 REQUEST_TIMEOUT = 45.0
+# httpx drops idle connections after five seconds by default, which means a
+# fresh DNS lookup and TLS handshake - about a fifth of a second - in front of
+# most replies. Holding the connection open makes the next line start sooner.
+KEEPALIVE_SECONDS = 600.0
 # A speech bubble holds a line or two. Capping output low is the single
 # biggest lever on cost, since output tokens are the expensive half.
 MAX_OUTPUT_TOKENS = 220
@@ -191,9 +195,23 @@ class AIBrain(QObject):
         if not key:
             raise RuntimeError("No API key configured")
         if self._client is None or key != self._client_key:
+            import httpx
             from openai import AsyncOpenAI
 
-            self._client = AsyncOpenAI(api_key=key, timeout=REQUEST_TIMEOUT, max_retries=1)
+            http_client = httpx.AsyncClient(
+                timeout=REQUEST_TIMEOUT,
+                limits=httpx.Limits(
+                    max_connections=4,
+                    max_keepalive_connections=4,
+                    keepalive_expiry=KEEPALIVE_SECONDS,
+                ),
+            )
+            self._client = AsyncOpenAI(
+                api_key=key,
+                timeout=REQUEST_TIMEOUT,
+                max_retries=1,
+                http_client=http_client,
+            )
             self._client_key = key
         return self._client
 

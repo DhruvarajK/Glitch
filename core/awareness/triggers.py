@@ -237,6 +237,53 @@ TRIGGERS: dict[str, Trigger] = {
 }
 
 
+# --------------------------------------------------- explicitly requested
+# "React to What I'm Doing" is not a change in the machine, so it has no
+# entry in the table above: the user is asking about the app that is in front
+# *right now*, which the focus rules would mis-describe as a switch.
+
+ASKED_UNKNOWN = Trigger(
+    key="asked:unknown",
+    animation="confused",
+    lines=(
+        "I cannot make out what you are in right now, but you look busy.",
+        "Whatever that app is, I do not recognise it. Carry on.",
+    ),
+    situation=(
+        "the user just asked what you make of what they are up to, but you "
+        "cannot tell which app is in front of them - say so lightly and do "
+        "not guess at what they are doing"
+    ),
+    cooldown=0.0,
+    emotion={"curiosity": 0.03},
+)
+
+
+def on_demand_trigger(category: str | None) -> Trigger:
+    """The trigger for a reaction the user asked for outright.
+
+    The focus rule for the category is reused so the voice and the clip stay
+    the same, but the situation describes what the user *is* doing rather
+    than claiming they just switched to it, and there is no cooldown to wait
+    out: the request is the permission.
+    """
+    if category is None:
+        return ASKED_UNKNOWN
+    base = TRIGGERS.get(f"focus:{category}")
+    label = label_for(category)
+    return Trigger(
+        key=f"asked:{category}",
+        animation=(base.animation if base else None) or "look",
+        lines=(base.lines if base and base.lines else (f"You are in {label}. Nice.",)),
+        situation=(
+            "the user just asked what you make of what they are up to; right "
+            f"now they are in {label}"
+        ),
+        cooldown=0.0,
+        emotion=dict(base.emotion) if base else {},
+    )
+
+
 def trigger_for(signal: Signal) -> Trigger | None:
     """The trigger for a signal, falling back to the family's generic rule."""
     trigger = TRIGGERS.get(signal.key)
@@ -327,14 +374,23 @@ class TriggerGovernor:
 
         return self._speak(trigger, signal, now, ai_enabled)
 
-    def force(self, signal: Signal, now: float, day: int, *, ai_enabled: bool = False):
+    def force(
+        self,
+        signal: Signal,
+        now: float,
+        day: int,
+        *,
+        ai_enabled: bool = False,
+        trigger: Trigger | None = None,
+    ):
         """React regardless of the rationing, for an explicit request.
 
-        The cooldowns are still stamped, so forcing a reaction does not leave
-        Glitch free to immediately volunteer another one on its own.
+        `trigger` overrides the table, for reactions that have no signal of
+        their own. The cooldowns are still stamped, so forcing a reaction does
+        not leave Glitch free to immediately volunteer another one on its own.
         """
         self._roll_day(day)
-        trigger = trigger_for(signal)
+        trigger = trigger or trigger_for(signal)
         if trigger is None:
             return None
         if not trigger.lines and not trigger.situation:
@@ -383,6 +439,10 @@ class TriggerGovernor:
             minutes = int(signal.data.get("minutes", 0))
             if minutes:
                 situation += f" ({minutes} minutes on {label_for(signal.subject)})"
+        elif signal.key.startswith("asked:"):
+            minutes = int(signal.data.get("minutes", 0))
+            if minutes:
+                situation += f" (about {minutes} minutes so far)"
         elif signal.key == "battery_low":
             percent = signal.data.get("percent")
             if percent is not None:

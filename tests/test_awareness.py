@@ -18,7 +18,12 @@ from core.awareness.monitor import (
     EnvironmentMonitor,
 )
 from core.awareness.signals import Signal, Snapshot
-from core.awareness.triggers import TRIGGERS, TriggerGovernor, trigger_for
+from core.awareness.triggers import (
+    TRIGGERS,
+    TriggerGovernor,
+    on_demand_trigger,
+    trigger_for,
+)
 from core.events.bus import EventBus
 from core.events.events import EventType
 from core.persistence.config import ConfigManager
@@ -330,16 +335,46 @@ def test_react_now_ignores_the_cooldowns(qt_gui_app, config):
     monitor = EnvironmentMonitor(config, EventBus(), sensor=sensor)
 
     first = monitor.react_now()
-    assert first is not None and first.trigger == "focus:coding"
+    assert first is not None and first.trigger == "asked:coding"
     # A second request works immediately, where a poll would have been refused.
     assert monitor.react_now() is not None
 
 
-def test_react_now_falls_back_when_nothing_is_recognised(qt_gui_app, config):
+def test_react_now_uses_the_last_real_app_not_glitch_itself(qt_gui_app, config):
+    """Clicking the tray gives Glitch the foreground, which is not an answer."""
+    sensor = FakeSensor([
+        snap(foreground="code.exe"),
+        snap(at=2.0, foreground="code.exe"),
+        snap(at=4.0, foreground=None),   # the tray menu took the focus
+    ])
+    monitor = EnvironmentMonitor(config, EventBus(), sensor=sensor)
+    monitor.poll()
+    monitor.poll()
+
+    reaction = monitor.react_now()
+    assert reaction is not None and reaction.trigger == "asked:coding"
+
+
+def test_react_now_says_so_when_nothing_is_recognised(qt_gui_app, config):
     sensor = FakeSensor([snap(foreground="mystery.exe")] * 2)
     monitor = EnvironmentMonitor(config, EventBus(), sensor=sensor)
     reaction = monitor.react_now()
-    assert reaction is not None and reaction.trigger == "user_returned"
+    assert reaction is not None and reaction.trigger == "asked:unknown"
+    assert reaction.speaks
+
+
+def test_react_now_forgets_an_app_left_long_ago(qt_gui_app, config):
+    sensor = FakeSensor([
+        snap(foreground="code.exe"),
+        snap(at=2.0, foreground="code.exe"),
+        snap(at=5000.0, foreground=None),
+    ])
+    monitor = EnvironmentMonitor(config, EventBus(), sensor=sensor)
+    monitor.poll()
+    monitor.poll()
+
+    reaction = monitor.react_now()
+    assert reaction is not None and reaction.trigger == "asked:unknown"
 
 
 def test_disabling_awareness_stops_polling_entirely(qt_gui_app, config):
@@ -348,3 +383,32 @@ def test_disabling_awareness_stops_polling_entirely(qt_gui_app, config):
     monitor = EnvironmentMonitor(config, EventBus(), sensor=sensor)
     assert monitor.poll() is None
     assert monitor.poll() is None
+
+
+def test_an_asked_for_reaction_talks_about_the_app_in_front():
+    trigger = on_demand_trigger("coding")
+    assert trigger.key == "asked:coding"
+    assert trigger.cooldown == 0.0
+    # It says what they are in, not that they just switched to it.
+    assert "a code editor" in (trigger.situation or "")
+    assert "switched" not in (trigger.situation or "")
+    assert trigger.lines == TRIGGERS["focus:coding"].lines
+
+
+def test_an_asked_for_reaction_admits_when_it_cannot_tell():
+    trigger = on_demand_trigger(None)
+    assert trigger.key == "asked:unknown"
+    assert trigger.lines and trigger.situation
+
+
+def test_how_long_they_have_been_there_reaches_the_situation():
+    governor = TriggerGovernor()
+    reaction = governor.force(
+        Signal("asked:coding", subject="coding", data={"minutes": 40}),
+        now=0.0,
+        day=1,
+        ai_enabled=True,
+        trigger=on_demand_trigger("coding"),
+    )
+    assert reaction is not None
+    assert "40 minutes" in (reaction.situation or "")

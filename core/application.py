@@ -25,7 +25,7 @@ from core.pet.state import PetState
 from core.screen.desktop_windows import create_platform_source
 from core.screen.manager import ScreenManager
 from core.tools import intents
-from core.tools.activity import ActivityTracker
+from core.tools.activity import SPOKEN, ActivityTracker
 from core.tools.launcher import AppLauncher
 from core.tools.reminders import ReminderService
 from core.tools.runner import ToolResult, ToolRunner
@@ -46,9 +46,14 @@ log = get_logger("app")
 TICK_INTERVAL_MS = 33
 PERSIST_INTERVAL_MS = 60_000
 
-# Stands in for the user's turn when Glitch speaks first. The prompt layer
-# carries the real situation; this only keeps the transcript readable.
+# Stands in for the user's turn when Glitch speaks first. The situation goes
+# in too: without it the transcript is a column of identical lines, and the
+# model starts talking about how chatty it is instead of what it noticed.
 UNPROMPTED_MESSAGE = "(you spoke first, unprompted)"
+
+
+def unprompted_message(situation: str | None) -> str:
+    return f"(you spoke first, unprompted: {situation})" if situation else UNPROMPTED_MESSAGE
 
 
 class GlitchApplication:
@@ -247,7 +252,7 @@ class GlitchApplication:
         screen = self.screens.screen_at(self.pet.x + self.pet.width / 2, self.pet.y)
         self.chat_input.open_near(
             int(self.pet.x + self.pet.width / 2),
-            int(min(self.pet.y + self.pet.height + 8, screen.bottom - 48)),
+            int(min(self.pet.y + self.pet.height + 4, screen.bottom - 52)),
             int(screen.left),
             int(screen.right),
         )
@@ -288,6 +293,7 @@ class GlitchApplication:
             last_interaction="sent you a message",
             memories=self.memory.recall(),
             activity=self.activity.summary(),
+            focus=self._focus_phrase(),
         )
         self._active_request = self.brain.ask(text, context)
 
@@ -387,6 +393,12 @@ class GlitchApplication:
             or self.brain.busy
         )
 
+    def _focus_phrase(self) -> str | None:
+        """What the user is in front of, as it reads in a sentence."""
+        return self.activity.current() or SPOKEN.get(
+            self.awareness.current_category or ""
+        )
+
     def react_now(self) -> None:
         """Tray-requested reaction: react to the desktop as it is right now."""
         if self.pet.state is PetState.SLEEPING:
@@ -423,9 +435,10 @@ class GlitchApplication:
             mood=self.pet.emotion.mood(),
             memories=self.memory.recall(),
             activity=self.activity.summary(),
+            focus=self._focus_phrase(),
             situation=reaction.situation,
         )
-        request_id = self.brain.ask(UNPROMPTED_MESSAGE, context)
+        request_id = self.brain.ask(unprompted_message(reaction.situation), context)
         if request_id is None:
             # The brain declined, so fall back to whatever was local.
             if reaction.animation:
