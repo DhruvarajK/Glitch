@@ -378,6 +378,7 @@ class GlitchApplication:
             return
         self._active_request = None
         self.bubble.show_text(response.message)
+        self.sounds.play("talk")
         self.pet.emotion.adjust(response.emotion_deltas())
         animation = response.animation()
         previewed, self._previewed_animation = self._previewed_animation, None

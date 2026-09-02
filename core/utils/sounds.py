@@ -1,8 +1,8 @@
-"""Optional sound effects.
+"""Sound effects.
 
-No sounds ship with Glitch. Drop WAV files named after the cues below into
-assets/sounds/ and they start playing; until then every call is a no-op, so
-the rest of the runtime does not need to care whether audio exists.
+A WAV file for every cue below ships in assets/sounds/. Replacing one swaps
+the cue; deleting one turns it into a no-op, so the rest of the runtime never
+has to care whether a given sound exists.
 """
 from __future__ import annotations
 
@@ -24,9 +24,17 @@ class SoundPlayer:
     def __init__(self, config: ConfigManager) -> None:
         self.config = config
         self._effects: dict[str, object] = {}
-        self._enabled = bool(config.get("sounds_enabled", False))
+        self._volume = self._clamp(config.get("sound_volume", 0.4))
+        self._enabled = bool(config.get("sounds_enabled", True))
         if self._enabled:
             self._load()
+
+    @staticmethod
+    def _clamp(volume: object) -> float:
+        try:
+            return max(0.0, min(1.0, float(volume)))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return 0.4
 
     def _load(self) -> None:
         try:
@@ -36,16 +44,21 @@ class SoundPlayer:
             self._enabled = False
             return
 
+        missing = []
         for cue in CUES:
             path = SOUNDS_DIR / f"{cue}.wav"
             if not path.exists():
+                missing.append(cue)
                 continue
             effect = QSoundEffect()
             effect.setSource(QUrl.fromLocalFile(str(path)))
-            effect.setVolume(float(self.config.get("sound_volume", 0.4)))
+            effect.setVolume(self._volume)
             self._effects[cue] = effect
-        if self._effects:
-            log.info("Loaded %d sound cue(s)", len(self._effects))
+        log.info("Loaded %d sound cue(s) from %s", len(self._effects), SOUNDS_DIR)
+        if missing:
+            # Almost always a packaging slip rather than a deliberate deletion,
+            # and an inaudible pet gives no other clue that it happened.
+            log.warning("No WAV in %s for cue(s): %s", SOUNDS_DIR, ", ".join(missing))
 
     def play(self, cue: str) -> None:
         if not self._enabled:
@@ -60,6 +73,8 @@ class SoundPlayer:
             self._load()
 
     def set_volume(self, volume: float) -> None:
-        volume = max(0.0, min(1.0, float(volume)))
+        # Remembered as well as applied: cues loaded later must not silently
+        # fall back to the volume the config held at startup.
+        self._volume = self._clamp(volume)
         for effect in self._effects.values():
-            effect.setVolume(volume)
+            effect.setVolume(self._volume)
