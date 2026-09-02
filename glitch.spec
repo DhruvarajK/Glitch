@@ -18,8 +18,11 @@ a = Analysis(
     datas=[
         (str(ROOT / "assets" / "animations"), "assets/animations"),
         (str(ROOT / "assets" / "icons"), "assets/icons"),
+        (str(ROOT / "assets" / "sounds"), "assets/sounds"),
     ],
     hiddenimports=[
+        # QSoundEffect is imported lazily so the cues keep working headless.
+        "PySide6.QtMultimedia",
         # keyring resolves its Windows backend at runtime.
         "keyring.backends.Windows",
         # The awareness sensors import these lazily.

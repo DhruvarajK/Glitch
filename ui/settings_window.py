@@ -253,7 +253,7 @@ class SettingsWindow(QDialog):
         form.addRow("Walk on windows", window_walking)
 
         sounds = QCheckBox()
-        sounds.setChecked(bool(self.config.get("sounds_enabled", False)))
+        sounds.setChecked(bool(self.config.get("sounds_enabled", True)))
         sounds.toggled.connect(lambda v: self.config.set("sounds_enabled", v))
         form.addRow("Sound effects", sounds)
 

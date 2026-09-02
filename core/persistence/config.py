@@ -11,7 +11,7 @@ from core.utils.logger import get_logger
 
 log = get_logger("config")
 
-CONFIG_VERSION = 1
+CONFIG_VERSION = 2
 
 DEFAULTS: dict[str, Any] = {
     "version": CONFIG_VERSION,
@@ -31,7 +31,7 @@ DEFAULTS: dict[str, Any] = {
     # Behaviour tuning
     "reaction_frequency": 1.0,
     "sleep_enabled": True,
-    "sounds_enabled": False,
+    "sounds_enabled": True,
     "sound_volume": 0.4,
     "idle_seconds_before_sleep": 300.0,
     # AI
@@ -155,8 +155,12 @@ class ConfigManager:
         if version > CONFIG_VERSION:
             log.warning("Config is from a newer version (%s); using defaults", version)
             return {}
-        # No historical migrations yet; future steps chain from here.
         log.info("Migrating config from version %s to %s", version, CONFIG_VERSION)
+        if version < 2:
+            # v1 shipped without any WAV files, so sounds defaulted to off and
+            # every config written back then recorded that. The cues ship now,
+            # so a stored `false` from v1 says nothing about user intent.
+            raw.pop("sounds_enabled", None)
         return raw
 
     # ------------------------------------------------------------------ save

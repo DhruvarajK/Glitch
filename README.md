@@ -185,7 +185,7 @@ Glitch/
 │   ├── animations/          # Sprite sheets (PNG) and Aseprite frame definitions (JSON)
 │   │   └── animations.json  # Central animation manifest and playback registry
 │   ├── icons/               # Application and system tray icons (glitch.ico, glitch.png)
-│   └── sounds/              # Optional WAV sound effects
+│   └── sounds/              # WAV sound effects, one per cue
 ├── core/
 │   ├── ai/                  # LLM integration, conversation buffer, prompts, emotion parsing
 │   ├── animation/           # Manifest registry, frame decoders, sprite scaling
@@ -323,12 +323,14 @@ Glitch adheres to standard Windows directory layouts:
 
 ## Audio Pipeline
 
-Sound effects in Glitch are fully event-driven and optional. 
+Sound effects in Glitch are fully event-driven and on by default. A WAV file
+for every cue ships in `assets/sounds/`:
 
-To enable audio cues:
-1. Place standard `.wav` audio files into `assets/sounds/` adhering to the naming convention:
-   - `click.wav`, `drag.wav`, `drop.wav`, `sleep.wav`, `wake.wav`, `talk.wav`, `react.wav`
-2. Enable sound playback in **Settings -> Behaviour**. Unassigned sound events fail silently without performance impact.
+- `click.wav`, `drag.wav`, `drop.wav`, `sleep.wav`, `wake.wav`, `talk.wav`, `react.wav`
+
+To swap a cue, replace its file with your own `.wav` of the same name. A cue
+with no file fails silently without performance impact. Playback and volume
+are controlled in **Settings -> Behaviour**.
 
 ---
 
